@@ -221,6 +221,10 @@ import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
+import * as ForkDreamService from "./project/ForkDreamService.ts";
+import * as ForkCoordinatorService from "./project/ForkCoordinatorService.ts";
+import * as ForkLayer from "./project/forkLayer.ts";
+import * as ForkMemoryService from "./project/ForkMemoryService.ts";
 import { threadWorkspaceRoot } from "./project/threadWorkspaceRoot.ts";
 import * as ManagedProjectFolders from "./project/ManagedProjectFolders.ts";
 import * as ScratchThreadPromotion from "./project/ScratchThreadPromotion.ts";
@@ -1475,6 +1479,10 @@ export const layerWsRpc = (
       const guestShares = yield* GuestShareService.GuestShareService;
       const pullRequests = yield* PullRequestService.PullRequestService;
       const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
+      const fork = yield* Layer.build(ForkLayer.layer);
+      const coordinators = Context.get(fork, ForkCoordinatorService.ForkCoordinatorService);
+      const dreams = Context.get(fork, ForkDreamService.ForkDreamService);
+      const memories = Context.get(fork, ForkMemoryService.ForkMemoryService);
       const pullRequestSync = yield* PullRequestSyncReactor.PullRequestSyncReactor;
       const deviceService = yield* DeviceService.DeviceService;
       const deviceHostContext =
@@ -2782,6 +2790,13 @@ export const layerWsRpc = (
           withPullRequestViewer(input, openedPullRequestRead(pullRequests.activity(input))),
         [WS_METHODS.pullRequestsReviewGuide]: (input) =>
           withPullRequestViewer(input, reviewGuides.get(input)),
+        [WS_METHODS.forkDreamStart]: dreams.start,
+        [WS_METHODS.forkCoordinatorOpen]: coordinators.open,
+        [WS_METHODS.forkMemoryGet]: memories.get,
+        [WS_METHODS.forkMemorySearch]: memories.search,
+        [WS_METHODS.forkMemoryHistory]: memories.history,
+        [WS_METHODS.forkMemorySave]: memories.save,
+        [WS_METHODS.forkMemoryForget]: memories.forget,
         [WS_METHODS.pullRequestsGenerateReviewGuide]: (input) =>
           withPullRequestViewer(input, reviewGuides.generate(input)),
         [WS_METHODS.pullRequestsThreadComments]: (input) =>

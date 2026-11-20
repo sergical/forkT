@@ -981,7 +981,7 @@ it.live.each([
             new WebSocket(
               `${origin}/ws?${ORCHESTRATION_PROTOCOL_QUERY_PARAM}=${ORCHESTRATION_PROTOCOL_VERSION}${framed ? `&${SOCKET_FRAME_PARTS_QUERY_PARAM}=1` : ""}`,
               {
-                origin: "t3code://app",
+                origin: "t3fork://app",
               },
             ),
         ),

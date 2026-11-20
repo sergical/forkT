@@ -36,6 +36,9 @@ import {
 } from "./Adapters/ClaudeAdapterV2.ts";
 import { withTurnStartReservation, withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
+import * as ForkCoordinatorStore from "../project/ForkCoordinatorStore.ts";
+import { forkCoordinatorInstructions } from "../project/forkCoordinatorInstructions.ts";
+import * as ForkMemoryService from "../project/ForkMemoryService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -224,6 +227,8 @@ export const layer: Layer.Layer<
   | ServerConfig.ServerConfig
   | ServerSettings.ServerSettingsService
   | GitWorkflowService.GitWorkflowService
+  | ForkCoordinatorStore.ForkCoordinatorStore
+  | ForkMemoryService.ForkMemoryService
   | ProjectService.ProjectService
   | ProviderAuthService.ProviderAuthService
   | ProjectionStore.ProjectionStoreV2
@@ -240,6 +245,8 @@ export const layer: Layer.Layer<
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    const coordinators = yield* ForkCoordinatorStore.ForkCoordinatorStore;
+    const memories = yield* ForkMemoryService.ForkMemoryService;
     const projects = yield* ProjectService.ProjectService;
     const providerAuth = yield* ProviderAuthService.ProviderAuthService;
     const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
@@ -1816,7 +1823,38 @@ export const layer: Layer.Layer<
             sideChatHandoff === undefined || compact || goalCommand
               ? ""
               : sideChatHandoff.summaryText;
-          const context = [delivery.context, sideChatContext, restartNote]
+          const coordinator =
+            compact || goalCommand || turnInput.resume
+              ? null
+              : yield* coordinators
+                  .forThread(input.threadId)
+                  .pipe(Effect.orElseSucceed(() => null));
+          const coordinatorContext =
+            coordinator === null ? "" : forkCoordinatorInstructions(coordinator.scope === "global");
+          const memoryContext =
+            compact || goalCommand || turnInput.resume
+              ? ""
+              : yield* memories
+                  .brief({
+                    projectId: projection.thread.projectId,
+                    runId,
+                    query: userText,
+                    includeProject: coordinator?.scope !== "global",
+                  })
+                  .pipe(
+                    Effect.catch((error) =>
+                      Effect.logWarning("Could not load memory brief", {
+                        reason: error.reason,
+                      }).pipe(Effect.as("")),
+                    ),
+                  );
+          const context = [
+            delivery.context,
+            sideChatContext,
+            restartNote,
+            coordinatorContext,
+            memoryContext,
+          ]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;
@@ -1890,14 +1928,7 @@ export const layer: Layer.Layer<
               }),
         ),
       );
-      const deliverySession =
-        effectiveHandoffs.length === 0 &&
-        retryHandoff.length === 0 &&
-        sideChatHandoff === undefined &&
-        restartNote === "" &&
-        !noteContinuation
-          ? session
-          : makeDeliverySession(session, startWithHandoffs);
+      const deliverySession = makeDeliverySession(session, startWithHandoffs);
       return runExecution.startRootRun({
         commandId: CommandId.make(`command:effect:provider-turn.start:${run.id}`),
         appThread: projection.thread,
