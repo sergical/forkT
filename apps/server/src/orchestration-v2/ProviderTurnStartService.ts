@@ -41,6 +41,9 @@ import {
 } from "./Adapters/ClaudeAdapterV2.ts";
 import { withTurnStartReservation, withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
+import * as ForkCoordinatorStore from "../project/ForkCoordinatorStore.ts";
+import { forkCoordinatorInstructions } from "../project/forkCoordinatorInstructions.ts";
+import * as ForkMemoryService from "../project/ForkMemoryService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -280,6 +283,8 @@ export const layer: Layer.Layer<
   | ServerConfig.ServerConfig
   | ServerSettings.ServerSettingsService
   | GitWorkflowService.GitWorkflowService
+  | ForkCoordinatorStore.ForkCoordinatorStore
+  | ForkMemoryService.ForkMemoryService
   | ProjectService.ProjectService
   | ProviderAuthService.ProviderAuthService
   | ProjectionStore.ProjectionStoreV2
@@ -297,6 +302,8 @@ export const layer: Layer.Layer<
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    const coordinators = yield* ForkCoordinatorStore.ForkCoordinatorStore;
+    const memories = yield* ForkMemoryService.ForkMemoryService;
     const projects = yield* ProjectService.ProjectService;
     const providerAuth = yield* ProviderAuthService.ProviderAuthService;
     const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
@@ -2135,7 +2142,35 @@ export const layer: Layer.Layer<
             ),
             ...(sideChatContext === "" || sideChatHandoff === undefined ? [] : [sideChatHandoff]),
           ];
-          const context = [delivery.context, sideChatContext, restartNote]
+          const includeForkContext = !compact && !slashCommand && !turnInput.resume;
+          const coordinator = includeForkContext
+            ? yield* coordinators.forThread(input.threadId).pipe(Effect.orElseSucceed(() => null))
+            : null;
+          const coordinatorContext =
+            coordinator === null ? "" : forkCoordinatorInstructions(coordinator.scope === "global");
+          const memoryContext = includeForkContext
+            ? yield* memories
+                .brief({
+                  projectId: projection.thread.projectId,
+                  runId,
+                  query: userText,
+                  includeProject: coordinator?.scope !== "global",
+                })
+                .pipe(
+                  Effect.catch((error) =>
+                    Effect.logWarning("Could not load memory brief", {
+                      reason: error.reason,
+                    }).pipe(Effect.as("")),
+                  ),
+                )
+            : "";
+          const context = [
+            delivery.context,
+            sideChatContext,
+            restartNote,
+            coordinatorContext,
+            memoryContext,
+          ]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;
@@ -2238,9 +2273,11 @@ export const layer: Layer.Layer<
               }),
         ),
       );
-      const deliverySession = carriesPendingContext
-        ? makeDeliverySession(session, startWithHandoffs)
-        : session;
+      const resume = manualResume && unsentResumeMessage === undefined;
+      const deliverySession =
+        carriesPendingContext || (!resume && !slashCommand)
+          ? makeDeliverySession(session, startWithHandoffs)
+          : session;
       return runExecution.startRootRun({
         commandId: CommandId.make(`command:effect:provider-turn.start:${run.id}`),
         appThread: projection.thread,
@@ -2267,7 +2304,7 @@ export const layer: Layer.Layer<
               .filter((turn) => turn.providerThreadId === providerThread.id)
               .map((turn) => turn.ordinal),
           ) + 1,
-        resume: manualResume && unsentResumeMessage === undefined,
+        resume,
         nativeThreadHasTurns:
           nativeInputRunIds.size > 0 ||
           (legacyInputRunIds.size > 0 &&

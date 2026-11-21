@@ -63,6 +63,7 @@ import {
   ArrowLeftIcon,
   BugIcon,
   ChartNoAxesColumnIcon,
+  GitForkIcon,
   CheckIcon,
   ChevronRightIcon,
   CornerLeftUpIcon,
@@ -1746,6 +1747,18 @@ function OpenCommandPaletteDialog(props: {
             ? paletteRouteTarget.threadRef.environmentId
             : null),
       );
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
+    value: "action:fork",
+    searchTerms: ["fork", "memory", "coordinator", "dream", "inbox"],
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- fork-only command
+    title: "Open T3 fork",
+    icon: <GitForkIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/fork" });
     },
   });
 

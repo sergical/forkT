@@ -2,6 +2,9 @@ import {
   serializeAssistantCitation,
   expandAssistantCitationsForProvider,
 } from "@t3tools/shared/assistantCitations";
+import { forkCoordinatorInstructions } from "../project/forkCoordinatorInstructions.ts";
+import * as ForkCoordinatorStore from "../project/ForkCoordinatorStore.ts";
+import * as ForkMemoryService from "../project/ForkMemoryService.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it, vi } from "vite-plus/test";
@@ -165,6 +168,14 @@ function startWithMissingWorktree(
   const createWorktree = vi.fn(() => Effect.succeed({} as never));
   const listLocalBranchNames = vi.fn(() => Effect.succeed(["feature/restore"]));
   const layer = ProviderTurnStart.layer.pipe(
+    Layer.provide(
+      Layer.mock(ForkCoordinatorStore.ForkCoordinatorStore)({
+        forThread: () => Effect.succeed(null),
+      }),
+    ),
+    Layer.provide(
+      Layer.mock(ForkMemoryService.ForkMemoryService)({ brief: () => Effect.succeed("") }),
+    ),
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({}),
@@ -457,6 +468,8 @@ it.each([
 
 function makeLocalCommandHarness(input: {
   readonly text: string;
+  readonly memoryBrief?: string;
+  readonly coordinator?: boolean;
   readonly manualContinuation?: boolean;
   readonly nativeResumeUnsupported?: boolean;
   readonly steeringRestart?: boolean;
@@ -1173,7 +1186,7 @@ function makeLocalCommandHarness(input: {
           startTurn(ProviderAdapter.resumeTurnInput(input)),
   };
   const open = vi.fn(() =>
-    input.sideChat !== undefined
+    input.sideChat !== undefined || input.coordinator
       ? Effect.succeed(sideChatSession as never)
       : input.interruptOpen === true
         ? Effect.interrupt
@@ -1209,7 +1222,7 @@ function makeLocalCommandHarness(input: {
       input: RunExecutionService.RunExecutionServiceV2StartRootRunInput,
     ) => Effect.Effect<void, RunExecutionService.RunExecutionServiceV2Error>
   >((runInput) =>
-    input.sideChat !== undefined
+    input.sideChat !== undefined || input.coordinator
       ? (runInput.resume
           ? runInput.session.resumeTurn!({
               ...runInput,
@@ -1331,6 +1344,28 @@ function makeLocalCommandHarness(input: {
     ),
   );
   const layer = ProviderTurnStart.layer.pipe(
+    Layer.provide(
+      Layer.mock(ForkCoordinatorStore.ForkCoordinatorStore)({
+        forThread: (threadId) =>
+          Effect.succeed(
+            input.coordinator
+              ? {
+                  scope: "project:test",
+                  projectId: ProjectId.make("test"),
+                  generation: 1,
+                  threadId,
+                  modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "test" },
+                  runtimeMode: "full-access" as const,
+                }
+              : null,
+          ),
+      }),
+    ),
+    Layer.provide(
+      Layer.mock(ForkMemoryService.ForkMemoryService)({
+        brief: () => Effect.succeed(input.memoryBrief ?? ""),
+      }),
+    ),
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({
@@ -2248,6 +2283,21 @@ it("finds abandoned turns in a long history reading each record a bounded number
   expect(reads).toBeLessThanOrEqual(4 * records);
 });
 
+effectIt.effect("delivers memory and coordinator role on ordinary turns without handoffs", () =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({
+      text: "Check retries",
+      memoryBrief: "SAVED_MEMORY",
+      coordinator: true,
+    });
+    yield* harness.start;
+    const text = harness.startTurn.mock.calls[0]?.[0].message.text;
+    expect(text).toContain("SAVED_MEMORY");
+    expect(text).toContain("persistent coordinator");
+    expect(text).toContain("Check retries");
+  }),
+);
+
 effectIt.effect("sends new steering text when restarting a manual continuation", () =>
   Effect.gen(function* () {
     const harness = makeLocalCommandHarness({
@@ -2357,6 +2407,8 @@ effectIt.effect.each([
       const harness = makeLocalCommandHarness({
         text: "",
         manualContinuation: true,
+        memoryBrief: "SAVED_MEMORY",
+        coordinator: true,
         sideChat,
       });
 
@@ -2372,7 +2424,15 @@ effectIt.effect.each([
       expect(texts).toHaveLength(1);
       if (resendsOriginal || context === "") {
         expect(texts[0]).toBe(
-          withInlineContext(context, resendsOriginal ? "Original request" : ""),
+          withInlineContext(
+            [
+              context,
+              ...(resendsOriginal ? [forkCoordinatorInstructions(false), "SAVED_MEMORY"] : []),
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+            resendsOriginal ? "Original request" : "",
+          ),
         );
       } else {
         // A resume that has to carry context still tells the agent to continue.
@@ -2383,6 +2443,8 @@ effectIt.effect.each([
       expect(harness.startTurn.mock.calls[0]?.[0].resume === true).toBe(
         context === "" && !resendsOriginal,
       );
+      if (!resendsOriginal)
+        expect(harness.startTurn.mock.calls[0]?.[0].message.text).not.toContain("SAVED_MEMORY");
       expect(harness.projection().contextHandoffs).toMatchObject([
         {
           id: "side-chat-context",
@@ -2508,6 +2570,7 @@ effectIt.effect.each([
     Effect.gen(function* () {
       const harness = makeLocalCommandHarness({
         text: "What is the main thread doing?",
+        memoryBrief: "SAVED_MEMORY",
         sideChat: { contextRun: "current", nativeForkFrom, sourceBoundary },
         ...capability,
       });
@@ -2515,6 +2578,7 @@ effectIt.effect.each([
       yield* harness.start;
 
       expect(harness.forkThread).toHaveBeenCalledTimes(forks ? 1 : 0);
+      expect(harness.startTurn.mock.calls[0]?.[0].message.text).toContain("SAVED_MEMORY");
       // The parent's rolled-back turn is gone from its native conversation.
       expect(
         harness.forkThread.mock.calls[0]?.[0].sourceProviderTurns?.map((turn) => turn.id),
@@ -2555,6 +2619,7 @@ effectIt.effect.each(
         manualContinuation: resuming,
         goalDriver,
         nativeGoals,
+        memoryBrief: "SAVED_MEMORY",
         sideChat: { contextRun: "failed", switchedProvider: true, unsentResume: resuming },
       });
       if (resuming) {

@@ -76,6 +76,13 @@ describe("runMigrations", () => {
       assert.deepStrictEqual(yield* runMigrations(), v2Migrations);
       assert.deepStrictEqual(yield* history, migrationManifest);
       assert.isAbove(yield* v2TableCount, 0);
+      const forkHistory =
+        yield* sql`SELECT migration_id, name FROM fork_sql_migrations ORDER BY migration_id`;
+      assert.deepStrictEqual(forkHistory, [
+        { migration_id: 1, name: "ForkMemory" },
+        { migration_id: 2, name: "ForkCoordinators" },
+      ]);
+      assert.isFalse(migrationManifest.some(([, name]) => name.startsWith("Fork")));
 
       // query_only rejects BEGIN IMMEDIATE, which CLI startup would otherwise take on the live database.
       yield* sql`PRAGMA query_only = ON`;

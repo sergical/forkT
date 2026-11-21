@@ -1,4 +1,11 @@
 import {
+  ForkDream,
+  ForkDreamInput,
+  ForkCoordinator,
+  ForkCoordinatorOpenInput,
+  ForkCoordinatorError,
+} from "./forkCoordinator.ts";
+import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -226,6 +233,15 @@ import {
   GuestShareCreateResult,
 } from "./guestShare.ts";
 import { PullRequestReviewGuideResult } from "./pullRequestReviewGuide.ts";
+import {
+  ForkMemory,
+  ForkMemoryError,
+  ForkMemoryForgetInput,
+  ForkMemoryKey,
+  ForkMemorySaveInput,
+  ForkMemorySearchInput,
+  ForkMemorySummary,
+} from "./forkMemory.ts";
 import {
   PullRequestActionInput,
   PullRequestActivity,
@@ -643,6 +659,13 @@ export const WS_METHODS = {
   pullRequestsChecks: "pullRequests.checks",
   pullRequestsActivity: "pullRequests.activity",
   pullRequestsReviewGuide: "pullRequests.reviewGuide",
+  forkDreamStart: "forkDream.start",
+  forkCoordinatorOpen: "forkCoordinator.open",
+  forkMemoryGet: "forkMemory.get",
+  forkMemorySearch: "forkMemory.search",
+  forkMemoryHistory: "forkMemory.history",
+  forkMemorySave: "forkMemory.save",
+  forkMemoryForget: "forkMemory.forget",
   pullRequestsGenerateReviewGuide: "pullRequests.generateReviewGuide",
   pullRequestsThreadComments: "pullRequests.threadComments",
   pullRequestsDiffFileContents: "pullRequests.diffFileContents",
@@ -2385,6 +2408,41 @@ export const WsRpcGroup = RpcGroup.make(
   WsIssueTrackersListRpc,
   WsIssueTrackersConnectRpc,
   WsIssueTrackersBindProjectRpc,
+  Rpc.make(WS_METHODS.forkDreamStart, {
+    payload: ForkDreamInput,
+    success: ForkDream,
+    error: ForkCoordinatorError,
+  }),
+  Rpc.make(WS_METHODS.forkCoordinatorOpen, {
+    payload: ForkCoordinatorOpenInput,
+    success: ForkCoordinator,
+    error: ForkCoordinatorError,
+  }),
+  Rpc.make(WS_METHODS.forkMemoryGet, {
+    payload: ForkMemoryKey,
+    success: Schema.NullOr(ForkMemory),
+    error: ForkMemoryError,
+  }),
+  Rpc.make(WS_METHODS.forkMemorySearch, {
+    payload: ForkMemorySearchInput,
+    success: Schema.Array(ForkMemorySummary),
+    error: ForkMemoryError,
+  }),
+  Rpc.make(WS_METHODS.forkMemoryHistory, {
+    payload: ForkMemoryKey,
+    success: Schema.Array(ForkMemory),
+    error: ForkMemoryError,
+  }),
+  Rpc.make(WS_METHODS.forkMemorySave, {
+    payload: ForkMemorySaveInput,
+    success: ForkMemory,
+    error: ForkMemoryError,
+  }),
+  Rpc.make(WS_METHODS.forkMemoryForget, {
+    payload: ForkMemoryForgetInput,
+    success: Schema.Void,
+    error: ForkMemoryError,
+  }),
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
