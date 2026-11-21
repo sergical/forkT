@@ -15,6 +15,7 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as ForkCoordinatorService from "./ForkCoordinatorService.ts";
 import * as ForkCoordinatorStore from "./ForkCoordinatorStore.ts";
+import * as ManagedProjectFolders from "./ManagedProjectFolders.ts";
 import * as ProjectService from "./ProjectService.ts";
 
 const projectId = ProjectId.make("project-a");
@@ -29,18 +30,38 @@ const record = {
 };
 const message = { commandId: CommandId.make("home-send-1"), text: "Plan the next change" };
 
-const harness = (existing: boolean) => {
+const harness = (existing: boolean, scratch = true) => {
   const launched: Array<ThreadLaunchService.ThreadLaunchInput> = [];
   const sent: Array<ThreadManagement.ThreadManagementSendInput> = [];
+  const claims: Array<string> = [];
   const layer = ForkCoordinatorService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ForkCoordinatorStore.ForkCoordinatorStore)({
           get: () => Effect.succeed(existing ? record : null),
-          claim: () => Effect.succeed(record),
+          claim: (input) => {
+            claims.push(input.projectId);
+            return Effect.succeed(record);
+          },
+        }),
+        Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+          namedProjectsRoot: "/projects",
+          ensureScratchProject: scratch
+            ? Effect.succeed({ projectId: ProjectId.make("scratch") })
+            : Effect.fail(
+                new ManagedProjectFolders.ScratchUnavailableError({ baseDir: "/repo/.t3" }),
+              ),
         }),
         Layer.mock(ProjectService.ProjectService)({
           getById: () => Effect.succeedSome({ id: projectId } as never),
+          listPage: () =>
+            Effect.succeed({
+              projects: [
+                { id: ProjectId.make("archived"), archivedAt: "2026-01-01T00:00:00.000Z" },
+                { id: projectId, archivedAt: null },
+              ] as never,
+              nextCursor: null,
+            }),
         }),
         Layer.mock(ServerSettings.ServerSettingsService)({
           getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
@@ -63,7 +84,7 @@ const harness = (existing: boolean) => {
       ),
     ),
   );
-  return { launched, sent, layer };
+  return { launched, sent, claims, layer };
 };
 
 const open = (layer: Layer.Layer<ForkCoordinatorService.ForkCoordinatorService>) =>
@@ -104,5 +125,21 @@ it.effect.each([
         },
       ],
     );
+  }),
+);
+
+it.effect.each([
+  ["the scratch workspace", true, "scratch"],
+  // Scratch is off when the T3 home sits inside a Git repository.
+  ["an open project when scratch is off", false, projectId],
+] as const)("hosts the main coordinator in %s when no project is given", ([, scratch, host]) =>
+  Effect.gen(function* () {
+    const { claims, sent, layer } = harness(false, scratch);
+    yield* Effect.gen(function* () {
+      const service = yield* ForkCoordinatorService.ForkCoordinatorService;
+      return yield* service.open({ global: true, modelSelection: record.modelSelection, message });
+    }).pipe(Effect.provide(layer));
+    assert.deepStrictEqual(claims, [host]);
+    assert.strictEqual(sent[0]?.text, message.text);
   }),
 );

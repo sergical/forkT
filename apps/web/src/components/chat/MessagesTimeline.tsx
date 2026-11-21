@@ -222,6 +222,8 @@ export interface MessagesTimelineHistoryControls {
 }
 
 interface MessagesTimelineProps {
+  /** Shown instead of the default placeholder while the thread has no messages. */
+  emptyState?: React.ReactNode;
   pendingApprovals?: ReadonlyArray<PendingApproval>;
   heldApprovalRequestIds?: ReadonlySet<string> | undefined;
   respondingRequestIds?: TimelineRowSharedState["respondingRequestIds"];
@@ -348,6 +350,7 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 }
 
 const ConversationTimeline = memo(function ConversationTimeline({
+  emptyState,
   pendingApprovals = EMPTY_PENDING_APPROVALS,
   heldApprovalRequestIds,
   respondingRequestIds = EMPTY_RESPONDING_REQUEST_IDS,
@@ -1425,14 +1428,23 @@ const ConversationTimeline = memo(function ConversationTimeline({
     return (
       <>
         {activityAnnouncer}
-        <div
-          className="flex h-full items-center justify-center ps-(--chat-lane-inset-start) pe-(--chat-lane-inset-end)"
-          style={{ paddingBottom: emptyPlaceholderInset }}
-        >
-          <p className="text-sm text-muted-foreground">
-            <T>Send a message to start the conversation.</T>
-          </p>
-        </div>
+        {emptyState ? (
+          <div
+            className="flex h-full min-h-0 flex-col"
+            style={{ paddingBottom: emptyPlaceholderInset }}
+          >
+            {emptyState}
+          </div>
+        ) : (
+          <div
+            className="flex h-full items-center justify-center ps-(--chat-lane-inset-start) pe-(--chat-lane-inset-end)"
+            style={{ paddingBottom: emptyPlaceholderInset }}
+          >
+            <p className="text-sm text-muted-foreground">
+              <T>Send a message to start the conversation.</T>
+            </p>
+          </div>
+        )}
       </>
     );
   }

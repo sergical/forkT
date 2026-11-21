@@ -1,4 +1,4 @@
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import { isForkMainCoordinatorThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 import { type ComponentProps, useLayoutEffect } from "react";
 import { useIncrementalTimelineEntries } from "../../hooks/useIncrementalTimelineEntries";
 import type { TimelineEntriesInput, TimelineEntry } from "../../session-logic";
@@ -9,6 +9,7 @@ import {
   resolveThreadSwitchTimeline,
   timelineHasEphemeralPreviewUrls,
 } from "../ChatView.logic";
+import { ForkOnboarding } from "../fork/ForkOnboarding";
 import { MessagesTimeline } from "./MessagesTimeline";
 
 /**
@@ -54,7 +55,20 @@ export function ThreadTimeline({
     }
     rememberReadyThreadTimeline({ threadKey: activeThreadKey, entries });
   }, [activeThreadKey, detailLoading, entries]);
+  // T3 fork: the main coordinator's empty thread introduces itself.
+  const forkOnboarding =
+    threadDetailRef !== null && isForkMainCoordinatorThreadId(threadDetailRef.threadId) ? (
+      <ForkOnboarding
+        environmentId={threadDetailRef.environmentId}
+        threadId={threadDetailRef.threadId}
+      />
+    ) : undefined;
   return (
-    <MessagesTimeline {...timelineProps} syncing={syncing} timelineEntries={displayedEntries} />
+    <MessagesTimeline
+      {...timelineProps}
+      {...(forkOnboarding ? { emptyState: forkOnboarding } : {})}
+      syncing={syncing}
+      timelineEntries={displayedEntries}
+    />
   );
 }

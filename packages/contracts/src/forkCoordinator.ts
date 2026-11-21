@@ -3,7 +3,8 @@ import { CommandId, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSch
 import { ModelSelection } from "./modelSelection.ts";
 
 export const ForkCoordinatorOpenInput = Schema.Struct({
-  projectId: ProjectId,
+  /** The main coordinator (`global`) needs none: it lives in the scratch workspace. */
+  projectId: Schema.optional(ProjectId),
   global: Schema.Boolean,
   modelSelection: Schema.optional(ModelSelection),
   /** Sent to the coordinator as a user turn once it is open. */
@@ -15,6 +16,10 @@ export const ForkCoordinatorOpenInput = Schema.Struct({
   ),
 });
 export type ForkCoordinatorOpenInput = typeof ForkCoordinatorOpenInput.Type;
+
+/** The main coordinator's thread is `fork:global:<generation>`; see ForkCoordinatorStore. */
+export const isForkMainCoordinatorThreadId = (threadId: string) =>
+  threadId.startsWith("fork:global:");
 
 export const ForkCoordinator = Schema.Struct({
   projectId: ProjectId,

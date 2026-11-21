@@ -38,6 +38,7 @@ export class ForkCoordinatorStore extends Context.Service<
     ) => Effect.Effect<CoordinatorRecord | null, ForkCoordinatorError>;
     readonly claim: (
       input: ForkCoordinatorOpenInput & {
+        readonly projectId: ProjectId;
         readonly modelSelection: ModelSelection;
         readonly runtimeMode: RuntimeMode;
       },
@@ -69,6 +70,7 @@ export const layer = Layer.effect(
     }, Effect.mapError(failure));
     const claim = Effect.fn("ForkCoordinatorStore.claim")(function* (
       input: ForkCoordinatorOpenInput & {
+        readonly projectId: ProjectId;
         readonly modelSelection: ModelSelection;
         readonly runtimeMode: RuntimeMode;
       },

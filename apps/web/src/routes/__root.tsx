@@ -154,9 +154,6 @@ function RootRouteBranch() {
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
   // A sync IPC read; the setting only changes across a relaunch.
   const [localEnvironmentDisabled] = useState(isLocalEnvironmentDisabled);
-  // Once true, stays true: a visit to /welcome means the bootstrap already chose a route.
-  const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
-  if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
   const hostedPromptLinkLanding = useHostedPromptLinkLanding(
     authGateState.status === "hosted-static",
   );
@@ -227,12 +224,14 @@ function RootRouteBranch() {
         </>
       ) : (
         <FirstRunGate
-          enabled={primaryEnvironmentAuthenticated}
+          // T3 fork: the main coordinator's own thread onboards, so the upstream wizard never opens.
+          enabled={false}
           hostedStatic={authGateState.status === "hosted-static"}
         >
           {appHosts}
           {primaryEnvironmentAuthenticated ? (
-            <EventRouter skipInitialBootstrapNavigation={returningFromWelcome} />
+            // T3 fork: home opens the main coordinator, not the server's startup thread.
+            <EventRouter skipInitialBootstrapNavigation />
           ) : null}
           {appShell}
         </FirstRunGate>

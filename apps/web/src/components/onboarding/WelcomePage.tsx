@@ -422,7 +422,7 @@ interface AgentTerminalSession {
 }
 
 // Shared by the page (to enable Start) and the agents section, so both agree on what is ready.
-function useWelcomeAgents(environmentId: EnvironmentId) {
+export function useWelcomeAgents(environmentId: EnvironmentId) {
   const providers = useAtomValue(serverEnvironment.providersValueAtom(environmentId));
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const managedPolicy = serverConfig?.managedPolicy;
@@ -1473,7 +1473,7 @@ const IMPORT_PERMISSION_MESSAGE = msg("This connection cannot import projects or
 
 // Creates the selected projects, then imports each one's agent history. Owns retry state so a
 // second Start resumes instead of recreating projects.
-function useProjectImport({
+export function useProjectImport({
   scans,
   importSelection,
   onImportSelectionChange,

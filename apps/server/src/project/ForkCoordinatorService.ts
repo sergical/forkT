@@ -2,6 +2,7 @@ import {
   CommandId,
   ForkCoordinatorError,
   MessageId,
+  type ProjectId,
   type ForkCoordinator,
   type ForkCoordinatorOpenInput,
 } from "@t3tools/contracts";
@@ -12,6 +13,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as ManagedProjectFolders from "./ManagedProjectFolders.ts";
 import * as ProjectService from "./ProjectService.ts";
 import * as ForkCoordinatorStore from "./ForkCoordinatorStore.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
@@ -38,8 +40,9 @@ export const layer = Layer.effect(
     const providers = yield* ProviderRegistry.ProviderRegistry;
     const launches = yield* ThreadLaunchService.ThreadLaunchService;
     const threads = yield* ThreadManagement.ThreadManagementService;
+    const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
     const ensure = Effect.fn("ForkCoordinatorService.ensure")(function* (
-      input: ForkCoordinatorOpenInput,
+      input: ForkCoordinatorOpenInput & { readonly projectId: ProjectId },
     ) {
       const existing = yield* store.get(input);
       const shell = existing === null ? null : yield* threads.getThreadShell(existing.threadId);
@@ -111,7 +114,29 @@ export const layer = Layer.effect(
     });
     const open = Effect.fn("ForkCoordinatorService.open")(
       function* (input: ForkCoordinatorOpenInput) {
-        const coordinator = yield* ensure(input);
+        const projectId =
+          input.projectId ??
+          (input.global
+            ? yield* folders.ensureScratchProject.pipe(
+                Effect.map((scratch) => scratch.projectId),
+                // Scratch is off when the T3 home sits inside a Git repository; any project can host.
+                Effect.catchTags({
+                  ScratchUnavailableError: () =>
+                    projects
+                      .listPage({ cursor: 0, limit: 100 })
+                      .pipe(
+                        Effect.map(
+                          (page) => page.projects.find((project) => project.archivedAt == null)?.id,
+                        ),
+                      ),
+                }),
+              )
+            : undefined);
+        if (projectId === undefined)
+          return yield* new ForkCoordinatorError({
+            message: "Choose a project for its coordinator.",
+          });
+        const coordinator = yield* ensure({ ...input, projectId });
         // Delivered under its own command, never the launch's, so a retry replays it and
         // concurrent first sends each land.
         if (input.message !== undefined)
