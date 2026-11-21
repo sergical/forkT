@@ -34,7 +34,13 @@ export const defaultForkTracePolicy: ForkTracePolicy = {
     "ws.rpc.server.reportClientActivity",
     "terminal.pollSubprocessActivity",
   ]),
-  alwaysPrefixes: ["gen_ai.", "fork.", ...FORK_TRACED_RPCS.map((rpc) => `ws.rpc.${rpc}`)],
+  alwaysPrefixes: [
+    "invoke_agent ",
+    "chat ",
+    "execute_tool ",
+    "fork.",
+    ...FORK_TRACED_RPCS.map((rpc) => `ws.rpc.${rpc}`),
+  ],
 };
 
 interface TraceState {
