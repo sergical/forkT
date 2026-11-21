@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ForkPage } from "../components/fork/ForkPage";
+import { ForkHome } from "../components/fork/ForkHome";
 import { HostedEmptyState } from "../components/HostedEmptyState";
 import { useEnvironments } from "../state/environments";
 
@@ -10,7 +10,7 @@ function ChatIndexRouteView() {
     if (!isReady) return null;
     if (environments.length === 0) return <HostedEmptyState />;
   }
-  return <ForkPage />;
+  return <ForkHome />;
 }
 
 export const Route = createFileRoute("/_chat/")({ component: ChatIndexRouteView });

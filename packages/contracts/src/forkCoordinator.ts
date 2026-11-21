@@ -1,11 +1,18 @@
 import * as Schema from "effect/Schema";
-import { CommandId, ProjectId, ThreadId } from "./baseSchemas.ts";
+import { CommandId, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ModelSelection } from "./modelSelection.ts";
 
 export const ForkCoordinatorOpenInput = Schema.Struct({
   projectId: ProjectId,
   global: Schema.Boolean,
   modelSelection: Schema.optional(ModelSelection),
+  /** Sent to the coordinator as a user turn once it is open. */
+  message: Schema.optional(
+    Schema.Struct({
+      commandId: CommandId,
+      text: TrimmedNonEmptyString.check(Schema.isMaxLength(20_000)),
+    }),
+  ),
 });
 export type ForkCoordinatorOpenInput = typeof ForkCoordinatorOpenInput.Type;
 

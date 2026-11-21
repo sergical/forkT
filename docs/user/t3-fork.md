@@ -1,6 +1,6 @@
 # T3 fork
 
-Open **T3 fork** from the sidebar or command palette. Choose a project, then open its coordinator. Return to that conversation for new work; the coordinator can delegate tasks into normal threads. The main coordinator is a separate conversation for work across projects in the same environment. You can change a coordinator's model and permission mode in its composer.
+The home screen talks to your coordinators. Choose a project, type what you need, and press Enter: T3 fork opens that project's coordinator with your message as its first turn, or queues it behind the coordinator's current work. Choose **All projects** to talk to the main coordinator. Open **T3 fork** from the sidebar or command palette to manage memory. Return to that conversation for new work; the coordinator can delegate tasks into normal threads. The main coordinator is a separate conversation for work across projects in the same environment. You can change a coordinator's model and permission mode in its composer.
 
 Save decisions, preferences, and lessons in Memory. Project memory is shared by that project's threads and worktrees. Personal preferences are separate and can be included across projects on the same environment. Relevant notes are included in later agent turns; current instructions and code still take precedence. Read an entry to see its source excerpts and revisions. Forgetting removes its saved content, source copies, and history from memory; it does not erase original conversations or context already delivered to an agent.
 

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CommandId, type EnvironmentId, type ForkMemory, type ProjectId } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { forkMemory } from "../../state/forkMemory";
+import { pendingForkThreads } from "./forkInbox";
 import { useProjects, useVisibleThreadShells } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -161,15 +162,8 @@ function ForkInbox({
   environmentId: EnvironmentId;
   projectId: ProjectId | null;
 }) {
-  const pending = useVisibleThreadShells().filter(
-    (thread) =>
-      thread.environmentId === environmentId &&
-      (projectId === null || thread.projectId === projectId) &&
-      (thread.hasPendingApprovals ||
-        thread.hasPendingUserInput ||
-        thread.pendingSubagentRequest != null ||
-        thread.hasActionableProposedPlan),
-  );
+  const pending = pendingForkThreads(useVisibleThreadShells(), environmentId, projectId);
+
   return (
     <section className="space-y-3" aria-label="Inbox">
       <h2 className="text-lg font-medium">
@@ -181,7 +175,7 @@ function ForkInbox({
         </p>
       ) : (
         <ul className="divide-y rounded-xl border">
-          {pending.map((thread) => (
+          {pending.map(({ thread, reason }) => (
             <li key={thread.id} className="flex items-center justify-between gap-3 p-3">
               <Link
                 to="/$environmentId/$threadId"
@@ -190,13 +184,7 @@ function ForkInbox({
               >
                 {thread.title}
               </Link>
-              <span className="text-sm text-muted-foreground">
-                {thread.hasPendingApprovals
-                  ? "Approval needed"
-                  : thread.hasActionableProposedPlan
-                    ? "Plan ready"
-                    : "Question waiting"}
-              </span>
+              <span className="text-sm text-muted-foreground">{reason}</span>
             </li>
           ))}
         </ul>
