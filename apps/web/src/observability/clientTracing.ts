@@ -12,6 +12,7 @@ import { releaseChannelOf, releaseResourceAttributes } from "@t3tools/shared/rel
 import * as ClientTracer from "./clientTracer";
 import * as PrimaryEnvironmentHttpLayer from "../environments/primary/httpLayer";
 import { isElectron } from "../env";
+import { forkSentryEnabled, sentryEffectTracer } from "./forkSentry";
 import { APP_VERSION } from "~/branding";
 
 const DEFAULT_EXPORT_INTERVAL_MS = 1_000;
@@ -75,6 +76,12 @@ let pendingConfiguration = Promise.resolve();
 
 export function configureClientTracing(): Promise<void> {
   if (activeConfigKey !== null) {
+    return pendingConfiguration;
+  }
+  if (forkSentryEnabled) {
+    // T3 fork: client spans go to Sentry, which shares their trace with the server.
+    activeConfigKey = "fork-sentry";
+    ClientTracer.setDelegate(sentryEffectTracer);
     return pendingConfiguration;
   }
   pendingConfiguration = pendingConfiguration.finally(() => applyClientTracingConfig());

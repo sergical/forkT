@@ -285,7 +285,10 @@ export class RpcInstrumentation extends RpcMiddleware.Service<RpcInstrumentation
   "t3/server/RpcInstrumentation",
 ) {}
 
-export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect, { rpc }) => {
+export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((
+  effect,
+  { rpc, remoteParentSpan },
+) => {
   const method = rpc._tag;
   const measured = effect.pipe(
     withMetrics({ counter: rpcRequestsTotal, timer: rpcRequestDuration, attributes: { method } }),
@@ -301,7 +304,8 @@ export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect
     Effect.flatMap((connection) =>
       measured.pipe(
         Effect.withSpan(`${RPC_SPAN_PREFIX}.${method}`, {
-          root: true,
+          // A call from a traced client continues the client's trace.
+          ...(remoteParentSpan === undefined ? { root: true } : { parent: remoteParentSpan }),
           links: Option.match(connection, {
             onNone: () => [],
             onSome: (span) => [{ span, attributes: {} }],
