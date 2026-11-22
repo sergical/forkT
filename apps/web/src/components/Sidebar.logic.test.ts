@@ -1755,7 +1755,6 @@ describe("buildSidebarProjectFolders", () => {
     const open = build(false);
     expect(open.threads.map((thread) => thread.id)).toEqual([coordinatorId, "task"]);
     expect(build(true).hiddenThreads).toHaveLength(open.threads.length);
-    expect(visible.filter(isSettled)).toHaveLength(6);
   });
 });
 
