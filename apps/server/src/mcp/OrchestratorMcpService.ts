@@ -1863,11 +1863,12 @@ const make = Effect.gen(function* () {
     });
     if (recommendation.selection === null)
       return yield* failure("provider_unavailable", recommendation.reason);
+    const { driverKind: _driverKind, ...pinnedTarget } = target ?? {};
     const resolved = yield* resolveTarget({
       ...input,
       providers,
       target: {
-        ...target,
+        ...pinnedTarget,
         providerInstanceId: recommendation.selection.instanceId,
         model: recommendation.selection.model,
         ...(target?.options === undefined && recommendation.selection.options !== undefined

@@ -31,6 +31,18 @@ export const forkCoordinatorProjectId = (threadId: string): string | null => {
 export const isForkCoordinatorThreadId = (threadId: string): boolean =>
   isForkMainCoordinatorThreadId(threadId) || forkCoordinatorProjectId(threadId) !== null;
 
+/** Fork routing accepts saved Claude exclusions from before the driver was identified as claudeAgent. */
+export const forkRoutingDriverKind = (driver: string): string =>
+  driver === "claude" ? "claudeAgent" : driver;
+
+export const isForkRoutingDriverExcluded = (
+  driver: string,
+  excludedDrivers: readonly string[],
+): boolean =>
+  excludedDrivers.some(
+    (excluded) => forkRoutingDriverKind(excluded) === forkRoutingDriverKind(driver),
+  );
+
 export const ForkRoutingWindow = Schema.Struct({
   label: Schema.String,
   remainingPercent: Schema.Number,

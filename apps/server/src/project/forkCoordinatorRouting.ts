@@ -1,5 +1,7 @@
 import {
+  forkRoutingDriverKind,
   isForkCoordinatorThreadId,
+  isForkRoutingDriverExcluded,
   isProviderAvailable,
   ThreadId,
   resolveProjectProviderInstanceEnabled,
@@ -50,7 +52,10 @@ export const isForkRoutingThread = (
     isForkRoutingThreadId(thread.lineage.rootThreadId));
 
 function routingWindow(provider: ServerProvider, window: ServerProviderUsageWindow) {
-  const modelScope = provider.driver === "claude" ? claudeUsageWindowModelScope(window) : undefined;
+  const modelScope =
+    forkRoutingDriverKind(provider.driver) === "claudeAgent"
+      ? claudeUsageWindowModelScope(window)
+      : undefined;
   return {
     label: window.label,
     remainingPercent: remainingPercent(window),
@@ -79,7 +84,7 @@ function applicableUsageWindows(provider: ServerProvider, model?: string) {
         : (window.modelIds === undefined || window.modelIds.includes(model)) &&
           (window.providerIds === undefined ||
             window.providerIds.includes(model.split("/")[0]!))) &&
-      (provider.driver !== "claude" ||
+      (forkRoutingDriverKind(provider.driver) !== "claudeAgent" ||
         windowLimitsModel(window, model ?? null) ||
         (modelName !== undefined && windowLimitsModel(window, modelName))),
   );
@@ -98,13 +103,13 @@ function forkRoutingEligibility(input: {
   const checkedAt = limits?.checkedAt ?? null;
   const policy = settings.forkCoordinatorRouting;
   if (
-    policy?.excludedDrivers.includes(provider.driver) ||
+    isForkRoutingDriverExcluded(provider.driver, policy?.excludedDrivers ?? []) ||
     policy?.excludedInstances.includes(provider.instanceId)
   ) {
     return { state: "excluded", checkedAt };
   }
   if (
-    (provider.driver !== "codex" && provider.driver !== "claude") ||
+    (provider.driver !== "codex" && forkRoutingDriverKind(provider.driver) !== "claudeAgent") ||
     !provider.enabled ||
     !provider.installed ||
     !isProviderAvailable(provider) ||
@@ -136,7 +141,7 @@ function forkRoutingEligibility(input: {
       : window.id === "five_hour" || window.id === "seven_day",
   );
   const hasFableMeter =
-    provider.driver !== "claude" ||
+    forkRoutingDriverKind(provider.driver) !== "claudeAgent" ||
     model === undefined ||
     !/(?:^|-)fable(?:-|$)/i.test(model) ||
     windows.some(
@@ -194,7 +199,8 @@ function matchesRoutingTarget(provider: ServerProvider, target: OrchestratorMcpT
   return (
     (target?.providerInstanceId === undefined ||
       target.providerInstanceId === provider.instanceId) &&
-    (target?.driverKind === undefined || target.driverKind === provider.driver)
+    (target?.driverKind === undefined ||
+      forkRoutingDriverKind(target.driverKind) === forkRoutingDriverKind(provider.driver))
   );
 }
 

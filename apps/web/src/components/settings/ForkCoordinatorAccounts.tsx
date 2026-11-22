@@ -1,5 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
-import { isProviderAvailable, type EnvironmentId } from "@t3tools/contracts";
+import {
+  forkRoutingDriverKind,
+  isForkRoutingDriverExcluded,
+  isProviderAvailable,
+  type EnvironmentId,
+} from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { T, useGT } from "gt-react";
 import { useState } from "react";
@@ -17,9 +22,10 @@ export function ForkCoordinatorAccounts({ environmentId }: { environmentId: Envi
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const [editing, setEditing] = useState(false);
   const policy = settings?.forkCoordinatorRouting;
+  const excludedDrivers = policy?.excludedDrivers ?? [];
   const accounts = (providers ?? []).filter(
     (provider) =>
-      (provider.driver === "codex" || provider.driver === "claude") &&
+      (provider.driver === "codex" || forkRoutingDriverKind(provider.driver) === "claudeAgent") &&
       provider.enabled &&
       provider.installed &&
       isProviderAvailable(provider) &&
@@ -34,7 +40,7 @@ export function ForkCoordinatorAccounts({ environmentId }: { environmentId: Envi
     account.displayName ?? (account.driver === "codex" ? "Codex" : "Claude");
   const allowed = accounts.filter(
     (account) =>
-      !policy?.excludedDrivers.includes(account.driver) &&
+      !isForkRoutingDriverExcluded(account.driver, excludedDrivers) &&
       !policy?.excludedInstances.includes(account.instanceId),
   );
   return (
@@ -66,13 +72,13 @@ export function ForkCoordinatorAccounts({ environmentId }: { environmentId: Envi
     >
       {editing ? (
         <div className="space-y-2">
-          {policy?.excludedDrivers.some((driver) => driver === "claude") ? (
+          {isForkRoutingDriverExcluded("claudeAgent", excludedDrivers) ? (
             <p className="text-sm text-muted-foreground">
               <T>All Claude accounts are excluded, including accounts added later.</T>
             </p>
           ) : null}
           {accounts.map((account) => {
-            const excludedByProvider = policy?.excludedDrivers.includes(account.driver) ?? false;
+            const excludedByProvider = isForkRoutingDriverExcluded(account.driver, excludedDrivers);
             const checked =
               !excludedByProvider && !policy?.excludedInstances.includes(account.instanceId);
             return (

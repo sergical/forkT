@@ -1732,7 +1732,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           {
             ...providerSnapshot({
               instanceId: claude,
-              driver: ProviderDriverKind.make("claude"),
+              driver: ProviderDriverKind.make("claudeAgent"),
               model: claudeModel,
             }),
             auth: { status: "authenticated", label: "Claude Ultra" },
