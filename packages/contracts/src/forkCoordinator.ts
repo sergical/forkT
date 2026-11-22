@@ -21,6 +21,15 @@ export type ForkCoordinatorOpenInput = typeof ForkCoordinatorOpenInput.Type;
 export const isForkMainCoordinatorThreadId = (threadId: string) =>
   threadId.startsWith("fork:global:");
 
+/** A project coordinator's thread is `fork:project:<projectId>:<generation>`. */
+export const forkCoordinatorProjectId = (threadId: string): string | null => {
+  const match = /^fork:project:(.+):\d+$/.exec(threadId);
+  return match ? match[1]! : null;
+};
+
+export const isForkCoordinatorThreadId = (threadId: string) =>
+  isForkMainCoordinatorThreadId(threadId) || forkCoordinatorProjectId(threadId) !== null;
+
 export const ForkCoordinator = Schema.Struct({
   projectId: ProjectId,
   global: Schema.Boolean,

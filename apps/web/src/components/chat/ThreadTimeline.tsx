@@ -1,4 +1,8 @@
-import { isForkMainCoordinatorThreadId, type ScopedThreadRef } from "@t3tools/contracts";
+import {
+  forkCoordinatorProjectId,
+  isForkMainCoordinatorThreadId,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import { type ComponentProps, useLayoutEffect } from "react";
 import { useIncrementalTimelineEntries } from "../../hooks/useIncrementalTimelineEntries";
 import type { TimelineEntriesInput, TimelineEntry } from "../../session-logic";
@@ -10,6 +14,7 @@ import {
   timelineHasEphemeralPreviewUrls,
 } from "../ChatView.logic";
 import { ForkOnboarding } from "../fork/ForkOnboarding";
+import { ForkProjectIntro } from "../fork/ForkProjectIntro";
 import { MessagesTimeline } from "./MessagesTimeline";
 
 /**
@@ -55,12 +60,21 @@ export function ThreadTimeline({
     }
     rememberReadyThreadTimeline({ threadKey: activeThreadKey, entries });
   }, [activeThreadKey, detailLoading, entries]);
-  // T3 fork: the main coordinator's empty thread introduces itself.
+  // T3 fork: a coordinator's empty thread introduces itself.
+  const coordinatorProjectId =
+    threadDetailRef === null ? null : forkCoordinatorProjectId(threadDetailRef.threadId);
   const forkOnboarding =
-    threadDetailRef !== null && isForkMainCoordinatorThreadId(threadDetailRef.threadId) ? (
+    threadDetailRef === null ? undefined : isForkMainCoordinatorThreadId(
+        threadDetailRef.threadId,
+      ) ? (
       <ForkOnboarding
         environmentId={threadDetailRef.environmentId}
         threadId={threadDetailRef.threadId}
+      />
+    ) : coordinatorProjectId !== null ? (
+      <ForkProjectIntro
+        environmentId={threadDetailRef.environmentId}
+        projectId={coordinatorProjectId}
       />
     ) : undefined;
   return (

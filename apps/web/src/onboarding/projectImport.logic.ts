@@ -4,8 +4,19 @@ import {
 } from "@t3tools/client-runtime/state/projects";
 import type { AgentSessionProjectCandidate, EnvironmentId, ProjectId } from "@t3tools/contracts";
 
-const RECENT_PROJECT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-const DEFAULT_SELECTION_MIN_THREADS = 3;
+export const RECENT_PROJECT_WINDOW_DAYS = 30;
+const RECENT_PROJECT_WINDOW_MS = RECENT_PROJECT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+export const DEFAULT_SELECTION_MIN_THREADS = 3;
+
+/**
+ * Threads an import brings: the server counts those in the import's own 30-day window.
+ * Servers predating that count report only the all-time total.
+ */
+export function importableThreadCount(
+  candidate: Pick<AgentSessionProjectCandidate, "threadCount" | "recentThreadCount">,
+): number {
+  return candidate.recentThreadCount ?? candidate.threadCount;
+}
 
 /** Treat candidates missing git as repositories for servers predating git scans. */
 export function partitionOnboardingProjects<T extends AgentSessionProjectCandidate>(
@@ -18,12 +29,30 @@ export function partitionOnboardingProjects<T extends AgentSessionProjectCandida
     available: candidates,
     recent: candidates.filter((candidate) => {
       if (candidate.git === null) return false;
-      if (candidate.threadCount < DEFAULT_SELECTION_MIN_THREADS) return false;
+      if (importableThreadCount(candidate) < DEFAULT_SELECTION_MIN_THREADS) return false;
       if (candidate.lastActiveAt === null) return false;
       const lastActiveAt = Date.parse(candidate.lastActiveAt);
       return lastActiveAt >= cutoff && lastActiveAt <= now;
     }),
   };
+}
+
+/**
+ * The onboarding list: the default picks first, every other new project behind "Show more".
+ * With no default picks there is nothing to hide, so the rest shows, unpicked.
+ */
+export function splitOnboardingProjectList<T extends { readonly key: string }>(input: {
+  readonly available: ReadonlyArray<T>;
+  readonly recent: ReadonlyArray<T>;
+  readonly isNew: (candidate: T) => boolean;
+}) {
+  const recentKeys = new Set(input.recent.map((candidate) => candidate.key));
+  const rest = input.available.filter(
+    (candidate) => input.isNew(candidate) && !recentKeys.has(candidate.key),
+  );
+  return input.recent.length === 0
+    ? { shown: rest, more: [] as T[], picked: new Set<string>() }
+    : { shown: [...input.recent], more: rest, picked: recentKeys };
 }
 
 export interface OnboardingProjectGroup<T> {
@@ -44,7 +73,7 @@ function latestActivity(left: string | null, right: string | null): string | nul
 export function groupOnboardingProjects<
   T extends Pick<
     AgentSessionProjectCandidate,
-    "path" | "title" | "git" | "threadCount" | "lastActiveAt"
+    "path" | "title" | "git" | "threadCount" | "recentThreadCount" | "lastActiveAt"
   >,
 >(candidates: ReadonlyArray<T>) {
   const groups = new Map<string, OnboardingProjectGroup<T> & { candidates: Array<T> }>();
@@ -64,7 +93,7 @@ export function groupOnboardingProjects<
         label: git.repository ?? candidate.title,
         repository: git.repository,
         candidates: [candidate],
-        threadCount: candidate.threadCount,
+        threadCount: importableThreadCount(candidate),
         lastActiveAt: candidate.lastActiveAt,
       });
       continue;
@@ -72,7 +101,7 @@ export function groupOnboardingProjects<
     existing.candidates.push(candidate);
     groups.set(key, {
       ...existing,
-      threadCount: existing.threadCount + candidate.threadCount,
+      threadCount: existing.threadCount + importableThreadCount(candidate),
       lastActiveAt: latestActivity(existing.lastActiveAt, candidate.lastActiveAt),
     });
   }

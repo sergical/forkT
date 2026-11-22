@@ -2,7 +2,12 @@ import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { msg, T, useGT, useMessages } from "gt-react";
 import { m } from "../i18n/messages";
 import { attachSidebarTree } from "../lib/sidebarTree";
-import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  isForkCoordinatorThreadId,
+  isForkMainCoordinatorThreadId,
+  type ScopedProjectRef,
+} from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import {
   dropThreadContext,
@@ -230,6 +235,7 @@ import {
   snoozeWakeLabel,
   type SnoozePreset,
 } from "./Sidebar.snooze";
+import { ForkSidebarCoordinators } from "./fork/ForkSidebarCoordinators";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { deriveProviderEntriesByEnvironment } from "../providerInstances";
 import { useStableCallback } from "../hooks/useStableCallback";
@@ -1117,7 +1123,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             ),
           ),
         );
-  const threads = useQuietThreadShells();
+  const allThreads = useQuietThreadShells();
+  // T3 fork: coordinators sit in their own block above the list; folders keep project ones.
+  const threads = allThreads.filter((thread) =>
+    boringSidebarEnabled
+      ? !isForkMainCoordinatorThreadId(thread.id)
+      : !isForkCoordinatorThreadId(thread.id),
+  );
   const promotingDraftThreadKeys = usePromotingDraftThreadKeys();
   const listedThreads =
     promotingDraftThreadKeys.length === 0
@@ -1130,7 +1142,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const routeRowThreadKey =
     routeThreadRef === null
       ? null
-      : scopedThreadKey(resolveListedAncestorThreadRef(routeThreadRef, threads));
+      : scopedThreadKey(resolveListedAncestorThreadRef(routeThreadRef, allThreads));
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
   // The open draft's first send names its thread in place; a finalized draft reached by
   // navigation resolves through its redirect instead, and still reveals.
@@ -3295,6 +3307,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         }
       >
         <SidebarGroup className="flex-1" role="presentation">
+          {!isSearchingThreads ? (
+            <ForkSidebarCoordinators
+              environmentId={primaryEnvironmentId}
+              threads={allThreads}
+              projects={
+                boringSidebarEnabled ? [] : scopeGroups.filter((project) => !project.isScratch)
+              }
+              routeRowThreadKey={routeRowThreadKey}
+              onOpenThread={(threadRef) => void navigateToThread(threadRef)}
+              onShowProjectThreads={(project) => setProjectScopeKeys([project.projectKey])}
+            />
+          ) : null}
           {isSearchingThreads ? (
             threadSearchResults.length > 0 ? (
               <TooltipProvider

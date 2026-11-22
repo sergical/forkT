@@ -3,7 +3,6 @@ import {
   ForkCoordinatorError,
   MessageId,
   type ProjectId,
-  type ThreadId,
   type ForkCoordinator,
   type ForkCoordinatorOpenInput,
 } from "@t3tools/contracts";
@@ -42,14 +41,6 @@ export const layer = Layer.effect(
     const launches = yield* ThreadLaunchService.ThreadLaunchService;
     const threads = yield* ThreadManagement.ThreadManagementService;
     const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
-    // Pinned once per thread, so a coordinator the user unpins stays unpinned. The main one leads.
-    const pin = (threadId: ThreadId, global: boolean) =>
-      threads.dispatch({
-        type: "thread.pin",
-        commandId: CommandId.make(`pin:${threadId}`),
-        threadId,
-        orderKey: global ? "ab" : "b",
-      });
     const ensure = Effect.fn("ForkCoordinatorService.ensure")(function* (
       input: ForkCoordinatorOpenInput & { readonly projectId: ProjectId },
     ) {
@@ -64,7 +55,6 @@ export const layer = Layer.effect(
             ),
             threadId: shell.id,
           });
-        yield* pin(existing.threadId, input.global);
         return {
           projectId: existing.projectId,
           global: input.global,
@@ -120,7 +110,6 @@ export const layer = Layer.effect(
         createdBy: "user",
         creationSource: "web",
       });
-      yield* pin(claimed.threadId, input.global);
       return { projectId: claimed.projectId, global: input.global, threadId: claimed.threadId };
     });
     const open = Effect.fn("ForkCoordinatorService.open")(

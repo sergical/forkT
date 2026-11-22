@@ -83,6 +83,9 @@ const MAX_METADATA_OPERATIONS_PER_SOURCE = MAX_TRANSCRIPTS_PER_SOURCE * 4;
 const MAX_METADATA_RECORDS_PER_SOURCE = 100_000;
 const MAX_METADATA_RECORDS_PER_TRANSCRIPT = 1_000;
 const RECENT_THREAD_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+// The import's window; the scan counts by it too, so a listed count is what an import brings.
+const isRecentTranscript = (mtimeMs: number | null, nowMs: number): mtimeMs is number =>
+  mtimeMs !== null && mtimeMs >= nowMs - RECENT_THREAD_WINDOW_MS && mtimeMs <= nowMs;
 // Screenshot-heavy transcripts can reach GiB; select fields while streaming to avoid allocating payloads.
 const MAX_IMPORTED_TRANSCRIPT_BYTES = 4 * 1024 * 1024 * 1024;
 const MAX_IMPORTED_MESSAGES = 200;
@@ -918,6 +921,10 @@ export const make = Effect.gen(function* () {
   const runtimes = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
   const baseDir = path.resolve(serverConfig.baseDir);
   const worktreesDir = path.resolve(serverConfig.worktreesDir);
+  // Symlinked cwds resolve to real paths, so the worktrees dir must too (macOS `/var` is a link).
+  const realWorktreesDir = yield* fileSystem
+    .realPath(worktreesDir)
+    .pipe(Effect.orElseSucceed(() => worktreesDir));
   const platform = yield* HostProcess.Platform;
   const isWindows = platform === "win32";
   const foldWorktreeCase = isWindows;
@@ -944,7 +951,8 @@ export const make = Effect.gen(function* () {
     normalizeForWorktreeMatch(candidatePath, foldWorktreeCase).startsWith(
       normalizeForWorktreeMatch(baseDir, foldWorktreeCase),
     ) ||
-    isT3ManagedWorktree(candidatePath, worktreesDir, foldWorktreeCase);
+    isT3ManagedWorktree(candidatePath, worktreesDir, foldWorktreeCase) ||
+    isT3ManagedWorktree(candidatePath, realWorktreesDir, foldWorktreeCase);
 
   const listDirectory = (directory: string) =>
     fileSystem.readDirectory(directory).pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
@@ -1958,10 +1966,12 @@ export const make = Effect.gen(function* () {
         path: string;
         sources: Array<AgentSessionSource>;
         threadCount: number;
+        recentThreadCount: number;
         lastActiveAtMs: number | null;
         git: AgentSessionProjectGit | null;
       }
     >();
+    const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
     const directoryProjects = yield* resolveDirectoryProjects(
       raw.flatMap((candidate) => {
         const expanded = expandHomePath(candidate.cwd.trim(), homeDir);
@@ -1976,11 +1986,15 @@ export const make = Effect.gen(function* () {
       if (project === undefined || project === null) continue;
 
       const existing = merged.get(project.key);
+      const recentThreadCount = candidate.transcripts.filter((transcript) =>
+        isRecentTranscript(transcript.mtimeMs, nowMs),
+      ).length;
       if (!existing) {
         merged.set(project.key, {
           path: project.path,
           sources: [candidate.source],
           threadCount: candidate.threadCount,
+          recentThreadCount,
           lastActiveAtMs: candidate.lastActiveAtMs,
           git: project.git,
         });
@@ -1990,6 +2004,7 @@ export const make = Effect.gen(function* () {
         existing.sources.push(candidate.source);
       }
       existing.threadCount += candidate.threadCount;
+      existing.recentThreadCount += recentThreadCount;
       existing.lastActiveAtMs =
         existing.lastActiveAtMs === null || candidate.lastActiveAtMs === null
           ? (existing.lastActiveAtMs ?? candidate.lastActiveAtMs)
@@ -2023,6 +2038,7 @@ export const make = Effect.gen(function* () {
         ...(importedProject === undefined ? {} : { projectId: importedProject.id }),
         sources: entry.sources,
         threadCount: entry.threadCount,
+        recentThreadCount: entry.recentThreadCount,
         lastActiveAt:
           entry.lastActiveAtMs === null
             ? null
@@ -2055,7 +2071,6 @@ export const make = Effect.gen(function* () {
     if (isExcludedProjectPath(root) || isExcludedProjectPath(realRoot)) return Stream.empty;
     const rootIdentity = yield* directoryIdentity(root);
     const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
-    const cutoffMs = nowMs - RECENT_THREAD_WINDOW_MS;
 
     // Imports recorded since a budget-truncated collection can free budget for transcripts it cut off.
     if (cachedCandidates === null || cachedCandidates.metadataTruncated) {
@@ -2113,17 +2128,9 @@ export const make = Effect.gen(function* () {
       if (!(yield* belongsToRoot(resolved))) continue;
 
       for (const transcript of candidate.transcripts) {
-        if (
-          transcript.mtimeMs === null ||
-          transcript.mtimeMs < cutoffMs ||
-          transcript.mtimeMs > nowMs
-        ) {
-          continue;
-        }
-        eligibleTranscripts.push({
-          candidate,
-          transcript: { ...transcript, mtimeMs: transcript.mtimeMs },
-        });
+        const { mtimeMs } = transcript;
+        if (!isRecentTranscript(mtimeMs, nowMs)) continue;
+        eligibleTranscripts.push({ candidate, transcript: { ...transcript, mtimeMs } });
       }
     }
 
