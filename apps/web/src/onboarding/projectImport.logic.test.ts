@@ -3,11 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   groupOnboardingProjects,
+  importableThreadCount,
   isNewOnboardingProject,
   partitionOnboardingProjects,
   onboardingProjectKey,
   resolveOnboardingLandingProject,
   resolveOnboardingProjectId,
+  splitOnboardingProjectList,
 } from "./projectImport.logic";
 
 const now = Date.parse("2026-08-22T12:00:00.000Z");
@@ -64,10 +66,45 @@ describe("partitionOnboardingProjects", () => {
     expect(partitionOnboardingProjects([repo, folder, thin], now).recent).toEqual([repo]);
   });
 
+  it("counts and selects by the threads an import brings, not the all-time total", () => {
+    // The import takes only the last 30 days: 9 threads ever, 6 of them recent.
+    const busy = candidate("/projects/t3code", { threadCount: 9, recentThreadCount: 6 });
+    const stale = candidate("/projects/stale", { threadCount: 9, recentThreadCount: 2 });
+
+    expect(importableThreadCount(busy)).toBe(6);
+    expect(partitionOnboardingProjects([busy, stale], now).recent).toEqual([busy]);
+    // Servers predating the recent count report only the total.
+    expect(importableThreadCount(candidate("/projects/legacy", { threadCount: 4 }))).toBe(4);
+  });
+
   it("selects candidates from servers that do not report git identity", () => {
     const { git: _git, ...legacy } = candidate("/projects/legacy");
 
     expect(partitionOnboardingProjects([legacy], now).recent).toEqual([legacy]);
+  });
+});
+
+describe("splitOnboardingProjectList", () => {
+  const listed = (path: string) => ({ key: path, path });
+  const busy = listed("/projects/busy");
+  const quiet = listed("/projects/quiet");
+  const added = listed("/projects/added");
+  const isNew = (project: { readonly key: string }) => project !== added;
+
+  it("shows the default picks and puts every other new project behind show more", () => {
+    const split = splitOnboardingProjectList({
+      available: [quiet, busy, added],
+      recent: [busy],
+      isNew,
+    });
+
+    expect(split).toEqual({ shown: [busy], more: [quiet], picked: new Set([busy.key]) });
+  });
+
+  it("shows the rest unpicked when nothing qualifies by default", () => {
+    expect(
+      splitOnboardingProjectList({ available: [quiet, busy, added], recent: [], isNew }),
+    ).toEqual({ shown: [quiet, busy], more: [], picked: new Set() });
   });
 });
 

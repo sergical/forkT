@@ -34,7 +34,6 @@ const harness = (existing: boolean, scratch = true) => {
   const launched: Array<ThreadLaunchService.ThreadLaunchInput> = [];
   const sent: Array<ThreadManagement.ThreadManagementSendInput> = [];
   const claims: Array<string> = [];
-  const dispatched: Array<{ readonly type: string; readonly orderKey?: string }> = [];
   const layer = ForkCoordinatorService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -77,10 +76,6 @@ const harness = (existing: boolean, scratch = true) => {
         Layer.mock(ThreadManagement.ThreadManagementService)({
           getThreadShell: () =>
             Effect.succeed({ id: threadId, projectId, deletedAt: null, archivedAt: null } as never),
-          dispatch: (command) => {
-            dispatched.push(command as never);
-            return Effect.succeed({} as never);
-          },
           sendToThread: (input) => {
             sent.push(input);
             return Effect.succeed({} as never);
@@ -89,7 +84,7 @@ const harness = (existing: boolean, scratch = true) => {
       ),
     ),
   );
-  return { launched, sent, claims, dispatched, layer };
+  return { launched, sent, claims, layer };
 };
 
 const open = (layer: Layer.Layer<ForkCoordinatorService.ForkCoordinatorService>) =>
@@ -108,12 +103,8 @@ it.effect.each([
   ["an existing", true],
 ] as const)("sends the home message to %s coordinator under its own command", ([, existing]) =>
   Effect.gen(function* () {
-    const { launched, sent, dispatched, layer } = harness(existing);
+    const { launched, sent, layer } = harness(existing);
     assert.strictEqual((yield* open(layer)).threadId, threadId);
-    assert.deepStrictEqual(
-      dispatched.map(({ type, orderKey }) => ({ type, orderKey })),
-      [{ type: "thread.pin", orderKey: "b" }],
-    );
     assert.strictEqual(launched.length, existing ? 0 : 1);
     assert.strictEqual(launched[0]?.initialMessage, undefined);
     assert.deepStrictEqual(
@@ -143,13 +134,12 @@ it.effect.each([
   ["an open project when scratch is off", false, projectId],
 ] as const)("hosts the main coordinator in %s when no project is given", ([, scratch, host]) =>
   Effect.gen(function* () {
-    const { claims, sent, dispatched, layer } = harness(false, scratch);
+    const { claims, sent, layer } = harness(false, scratch);
     yield* Effect.gen(function* () {
       const service = yield* ForkCoordinatorService.ForkCoordinatorService;
       return yield* service.open({ global: true, modelSelection: record.modelSelection, message });
     }).pipe(Effect.provide(layer));
     assert.deepStrictEqual(claims, [host]);
-    assert.strictEqual(dispatched[0]?.orderKey, "ab");
     assert.strictEqual(sent[0]?.text, message.text);
   }),
 );

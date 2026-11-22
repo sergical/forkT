@@ -418,6 +418,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             title: path.basename(newerWorkspace),
             sources: ["claudeAgent"],
             threadCount: 1,
+            recentThreadCount: 0,
             lastActiveAt: "2026-03-01T00:00:00.000Z",
             alreadyImported: false,
             git: null,
@@ -427,6 +428,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             title: path.basename(olderWorkspace),
             sources: ["claudeAgent"],
             threadCount: 2,
+            recentThreadCount: 0,
             lastActiveAt: "2026-01-02T00:00:00.000Z",
             alreadyImported: false,
             git: null,
@@ -473,6 +475,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             projectId: ProjectId.make("project-1"),
             sources: ["claudeAgent", "codex"],
             threadCount: 2,
+            recentThreadCount: 0,
             lastActiveAt: "2026-04-01T09:00:00.000Z",
             alreadyImported: true,
             git: null,
@@ -553,6 +556,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             projectId: ProjectId.make("project-1"),
             sources: ["claudeAgent", "codex"],
             threadCount: 2,
+            recentThreadCount: 0,
             lastActiveAt: "2026-01-02T00:00:00.000Z",
             alreadyImported: true,
             git: null,
@@ -1420,6 +1424,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             title: path.basename(workspace),
             sources: ["claudeAgent"],
             threadCount: 1,
+            recentThreadCount: 0,
             lastActiveAt: "2026-05-03T00:00:00.000Z",
             alreadyImported: false,
             git: null,
@@ -1709,6 +1714,37 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
           ["Legacy prompt", "Legacy answer"],
         ]);
         expect(threads[0]).toMatchObject({ source: "pi", title: "Pi refactor" });
+        // The scan lists the old session in its total, but its recent count is what was imported.
+        const scan = yield* runScan({ claudeHomePath, codexHomePath, piAgentDir });
+        expect(scan.candidates.find((candidate) => candidate.path === workspace)).toMatchObject({
+          threadCount: threads.length + 1,
+          recentThreadCount: threads.length,
+        });
+      }),
+    );
+
+    it.effect("counts no more recent threads than one import brings", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+        const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+        const workspace = yield* makeTempDir("t3code-workspace-");
+        for (let index = 0; index < 101; index++) {
+          yield* writeTranscript({
+            filePath: path.join(claudeHomePath, "projects", "-busy", `session-${index}.jsonl`),
+            contents: claudeSessionLine(workspace),
+            mtimeMs: nowMs - index * 60_000,
+          });
+        }
+
+        const scan = yield* runScan({ claudeHomePath, codexHomePath });
+
+        expect(scan.candidates.find((candidate) => candidate.path === workspace)).toMatchObject({
+          threadCount: 101,
+          recentThreadCount: 100,
+        });
       }),
     );
 

@@ -54,6 +54,7 @@ import { useT3ConnectAuthPrompt } from "../clerk/useT3ConnectAuthPrompt";
 import { completeOnboarding } from "../../onboarding/firstRun";
 import {
   groupOnboardingProjects,
+  importableThreadCount,
   partitionOnboardingProjects,
   onboardingProjectKey,
   resolveOnboardingLandingProject,
@@ -1940,7 +1941,7 @@ function ImportCandidateRow({
       </Tooltip>
       <ImportRowMeta
         sources={nested ? null : candidate.sources}
-        threadCount={candidate.threadCount}
+        threadCount={importableThreadCount(candidate)}
         lastActiveAt={candidate.lastActiveAt}
       />
     </label>
