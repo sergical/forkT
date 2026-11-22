@@ -54,12 +54,13 @@ function layerFor(
   baseDir: string,
   encryptionAvailable = true,
   failDecrypt: Ref.Ref<boolean> | null = null,
+  platform: "darwin" | "linux" = "linux",
   fileSystemLayer: Layer.Layer<FileSystem.FileSystem> = NodeServices.layer,
 ) {
   const layerEnvironment = DesktopEnvironment.layer({
     dirname: "/repo/apps/desktop/src",
     homeDirectory: baseDir,
-    platform: "darwin",
+    platform,
     processArch: "arm64",
     appVersion: "1.2.3",
     appPath: "/repo",
@@ -92,16 +93,65 @@ function layerFor(
 const withStore = <A, E, R>(
   effect: Effect.Effect<A, E, R | DesktopConnectionCatalogStore.DesktopConnectionCatalogStore>,
   encryptionAvailable = true,
+  platform: "darwin" | "linux" = "linux",
 ) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const baseDir = yield* fileSystem.makeTempDirectoryScoped({
       prefix: "t3-desktop-connection-catalog-test-",
     });
-    return yield* effect.pipe(Effect.provide(layerFor(baseDir, encryptionAvailable)));
+    return yield* effect.pipe(
+      Effect.provide(layerFor(baseDir, encryptionAvailable, null, platform)),
+    );
   }).pipe(Effect.provide(NodeServices.layer));
 
 describe("DesktopConnectionCatalogStore", () => {
+  it.effect.each(["catalog", "saved environments"])(
+    "starts with an empty catalog on packaged macOS when legacy %s exist",
+    (legacyFormat) =>
+      withStore(
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          const environment = yield* DesktopEnvironment.DesktopEnvironment;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const store = yield* DesktopConnectionCatalogStore.DesktopConnectionCatalogStore;
+          const catalog = '{"schemaVersion":1,"targets":[]}';
+          const [legacyPath, legacyContents] =
+            legacyFormat === "catalog"
+              ? [
+                  path.join(environment.stateDir, "connection-catalog.json"),
+                  JSON.stringify({ version: 1, encryptedCatalog: "djEw" }),
+                ]
+              : [
+                  environment.savedEnvironmentRegistryPath,
+                  yield* encodeLegacySavedEnvironments({
+                    version: 1,
+                    records: [
+                      {
+                        environmentId: "legacy-environment",
+                        label: "Legacy environment",
+                        httpBaseUrl: "https://legacy.example.com/",
+                        wsBaseUrl: "wss://legacy.example.com/",
+                        createdAt: "2026-04-09T00:00:00.000Z",
+                        lastConnectedAt: null,
+                        encryptedBearerToken: "djEw",
+                      },
+                    ],
+                  }),
+                ];
+          yield* fileSystem.makeDirectory(environment.stateDir, { recursive: true });
+          yield* fileSystem.writeFileString(legacyPath, legacyContents);
+
+          assert.deepStrictEqual(yield* store.get, Option.none());
+          assert.isTrue(yield* store.set(catalog));
+          assert.deepStrictEqual(yield* store.get, Option.some(catalog));
+          assert.equal(yield* fileSystem.readFileString(legacyPath), legacyContents);
+        }),
+        true,
+        "darwin",
+      ),
+  );
+
   it.effect("persists and reads an encrypted connection catalog", () =>
     withStore(
       Effect.gen(function* () {
