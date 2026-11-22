@@ -339,7 +339,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ipcRenderer.on(IpcChannels.FORK_LIVE_UPDATE_STATE_CHANNEL, wrapped);
       return () => ipcRenderer.removeListener(IpcChannels.FORK_LIVE_UPDATE_STATE_CHANNEL, wrapped);
     },
-    restart: (sha) => ipcRenderer.invoke(IpcChannels.FORK_LIVE_UPDATE_RESTART_CHANNEL, sha),
+    restart: (version) => ipcRenderer.invoke(IpcChannels.FORK_LIVE_UPDATE_RESTART_CHANNEL, version),
   },
   getUpdateState: () => ipcRenderer.invoke(IpcChannels.UPDATE_GET_STATE_CHANNEL),
   setUpdateChannel: (channel, minimumVersion) =>

@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { RotateCwIcon, TriangleAlertIcon } from "lucide-react";
+import { RotateCwIcon } from "lucide-react";
 import { T, useGT } from "gt-react";
 import { useState } from "react";
 
@@ -61,34 +61,41 @@ export function SidebarForkLiveUpdate() {
 function ForkLiveUpdateNotice() {
   const gt = useGT();
   const state = AsyncResult.getOrElse(useAtomValue(forkUpdateStateAtom), () => null);
-  if (!state || (!state.ready && !state.failure)) return null;
+  if (!state?.ready) return null;
 
-  const label = state.failure ? gt("Update build failed") : gt("Update ready, restart");
+  const label = gt("Update ready, restart");
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <Dialog>
           <DialogTrigger render={<SidebarMenuButton />}>
-            {state.failure ? <TriangleAlertIcon /> : <RotateCwIcon />}
+            <RotateCwIcon />
             <span>{label}</span>
           </DialogTrigger>
-          <ForkLiveUpdateDetails state={state} label={label} />
+          <ForkLiveUpdateDetails ready={state.ready} label={label} />
         </Dialog>
       </SidebarMenuItem>
     </SidebarMenu>
   );
 }
 
-function ForkLiveUpdateDetails({ state, label }: { state: ForkLiveUpdateState; label: string }) {
+function ForkLiveUpdateDetails({
+  ready,
+  label,
+}: {
+  ready: NonNullable<ForkLiveUpdateState["ready"]>;
+  label: string;
+}) {
   const gt = useGT();
   const running = useAtomValue(forkUpdateRunCountAtom);
-  const ready = state.ready;
   const [restarting, setRestarting] = useState(false);
   const [restartError, setRestartError] = useState(false);
 
-  async function restart(sha: string) {
+  async function restart(version: string) {
     setRestarting(true);
-    const accepted = await window.desktopBridge?.forkLiveUpdate?.restart(sha).catch(() => false);
+    const accepted = await window.desktopBridge?.forkLiveUpdate
+      ?.restart(version)
+      .catch(() => false);
     if (!accepted) {
       setRestartError(true);
       setRestarting(false);
@@ -100,27 +107,16 @@ function ForkLiveUpdateDetails({ state, label }: { state: ForkLiveUpdateState; l
       <DialogHeader>
         <DialogTitle>{label}</DialogTitle>
         <DialogDescription>
-          {state.failure && <T>The installed app is unchanged.</T>}
-          {ready && (
-            <span className="block tabular-nums">
-              {gt(
-                "{count, plural, one {Restarting will stop {count} agent run.} other {Restarting will stop {count} agent runs.}}",
-                { count: running },
-              )}
-            </span>
-          )}
+          <span className="block tabular-nums">
+            {gt(
+              "{count, plural, one {Restarting will stop {count} agent run.} other {Restarting will stop {count} agent runs.}}",
+              { count: running },
+            )}
+          </span>
         </DialogDescription>
       </DialogHeader>
       <div className="grid max-h-[50vh] gap-3 overflow-auto px-6 py-2 text-sm">
-        {state.failure && (
-          <div className="grid min-w-0 gap-2">
-            <p className="break-all text-muted-foreground">{state.failure.logPath}</p>
-            <pre className="whitespace-pre-wrap break-all rounded-md bg-muted p-3 text-xs">
-              {state.failure.tail}
-            </pre>
-          </div>
-        )}
-        {ready && <p className="whitespace-pre-line wrap-anywhere">{ready.commits.join("\n")}</p>}
+        <p className="whitespace-pre-line wrap-anywhere">{ready.commits.join("\n")}</p>
         {restartError && (
           <p role="alert">
             <T>The app could not restart. Open this notice again to retry.</T>
@@ -131,11 +127,9 @@ function ForkLiveUpdateDetails({ state, label }: { state: ForkLiveUpdateState; l
         <DialogClose render={<Button variant="outline" />}>
           <T>Close</T>
         </DialogClose>
-        {ready && (
-          <Button disabled={restarting} onClick={() => void restart(ready.sha)}>
-            <T>Restart</T>
-          </Button>
-        )}
+        <Button disabled={restarting} onClick={() => void restart(ready.version)}>
+          <T>Restart</T>
+        </Button>
       </DialogFooter>
     </DialogPopup>
   );

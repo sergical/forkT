@@ -273,8 +273,9 @@ export interface DesktopRuntimeInfo {
 }
 
 export const ForkLiveUpdateStateSchema = Schema.Struct({
-  ready: Schema.NullOr(Schema.Struct({ sha: Schema.String, commits: Schema.Array(Schema.String) })),
-  failure: Schema.NullOr(Schema.Struct({ logPath: Schema.String, tail: Schema.String })),
+  ready: Schema.NullOr(
+    Schema.Struct({ version: Schema.String, commits: Schema.Array(Schema.String) }),
+  ),
 });
 export type ForkLiveUpdateState = typeof ForkLiveUpdateStateSchema.Type;
 
@@ -1223,7 +1224,7 @@ export interface DesktopBridge {
   forkLiveUpdate?: {
     getState: () => Promise<ForkLiveUpdateState>;
     onState: (listener: (state: ForkLiveUpdateState) => void) => () => void;
-    restart: (sha: string) => Promise<boolean>;
+    restart: (version: string) => Promise<boolean>;
   };
   getUpdateState: () => Promise<DesktopUpdateState>;
   /** `minimumVersion` is a track switch's checked release; nothing older is offered after. */
