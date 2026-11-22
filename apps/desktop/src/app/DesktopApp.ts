@@ -37,6 +37,7 @@ import * as DesktopShellEnvironment from "../shell/DesktopShellEnvironment.ts";
 import * as DesktopStartupRecovery from "./DesktopStartupRecovery.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopRemoteUpdates from "../updates/DesktopRemoteUpdates.ts";
+import { installDesktopForkLiveUpdate } from "../updates/DesktopForkLiveUpdate.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
 import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
@@ -215,6 +216,7 @@ const startLocalBackend = Effect.gen(function* () {
     clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
   });
   yield* installDesktopIpcHandlers();
+  yield* installDesktopForkLiveUpdate();
   yield* logBootstrapInfo("bootstrap ipc handlers registered");
 
   if (!settings.localEnvironmentEnabled) {

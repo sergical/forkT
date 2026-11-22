@@ -272,6 +272,12 @@ export interface DesktopRuntimeInfo {
   runningUnderArm64Translation: boolean;
 }
 
+export const ForkLiveUpdateStateSchema = Schema.Struct({
+  ready: Schema.NullOr(Schema.Struct({ sha: Schema.String, commits: Schema.Array(Schema.String) })),
+  failure: Schema.NullOr(Schema.Struct({ logPath: Schema.String, tail: Schema.String })),
+});
+export type ForkLiveUpdateState = typeof ForkLiveUpdateStateSchema.Type;
+
 export interface DesktopUpdateState {
   enabled: boolean;
   status: DesktopUpdateStatus;
@@ -1214,6 +1220,11 @@ export interface DesktopBridge {
   getWindowFullscreenState: () => boolean;
   onWindowFullscreenStateChange: (listener: (fullscreen: boolean) => void) => () => void;
   getWindowZoomFactor: () => number;
+  forkLiveUpdate?: {
+    getState: () => Promise<ForkLiveUpdateState>;
+    onState: (listener: (state: ForkLiveUpdateState) => void) => () => void;
+    restart: (sha: string) => Promise<boolean>;
+  };
   getUpdateState: () => Promise<DesktopUpdateState>;
   /** `minimumVersion` is a track switch's checked release; nothing older is offered after. */
   setUpdateChannel: (
