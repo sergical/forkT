@@ -2038,7 +2038,8 @@ export const make = Effect.gen(function* () {
         ...(importedProject === undefined ? {} : { projectId: importedProject.id }),
         sources: entry.sources,
         threadCount: entry.threadCount,
-        recentThreadCount: entry.recentThreadCount,
+        // One import takes at most this many, so a larger count would overstate it.
+        recentThreadCount: Math.min(entry.recentThreadCount, MAX_IMPORT_TRANSCRIPTS),
         lastActiveAt:
           entry.lastActiveAtMs === null
             ? null

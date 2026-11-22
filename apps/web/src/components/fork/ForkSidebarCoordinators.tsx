@@ -57,8 +57,12 @@ export function ForkSidebarCoordinators(props: {
 
   const isLive = (thread: EnvironmentThreadShell) =>
     thread.archivedAt == null && thread.deletedAt == null;
+  // Each environment has its own main coordinator; this row opens the primary one's.
   const main = props.threads.find(
-    (thread) => isLive(thread) && isForkMainCoordinatorThreadId(thread.id),
+    (thread) =>
+      isLive(thread) &&
+      isForkMainCoordinatorThreadId(thread.id) &&
+      thread.environmentId === props.environmentId,
   );
   const coordinatorByProject = new Map<string, EnvironmentThreadShell>();
   const threadCountByProject = new Map<string, number>();
@@ -112,17 +116,20 @@ export function ForkSidebarCoordinators(props: {
           </p>
           {props.projects.map((project) => {
             const isOpen = expanded.includes(project.projectKey);
-            const coordinator = project.memberProjectRefs
-              .map((ref) => coordinatorByProject.get(`${ref.environmentId}:${ref.projectId}`))
-              .find((thread) => thread !== undefined);
+            // A group can hold several projects, such as two clones; each has its own coordinator.
+            const members = project.memberProjects.map((member) => ({
+              member,
+              coordinator: coordinatorByProject.get(`${member.environmentId}:${member.id}`),
+            }));
             const threadCount = project.memberProjectRefs.reduce(
               (total, ref) =>
                 total + (threadCountByProject.get(`${ref.environmentId}:${ref.projectId}`) ?? 0),
               0,
             );
-            const home = project.memberProjectRefs[0];
-            const coordinatorActive =
-              coordinator !== undefined && props.routeRowThreadKey === keyOf(coordinator);
+            const coordinatorActive = members.some(
+              ({ coordinator }) =>
+                coordinator !== undefined && props.routeRowThreadKey === keyOf(coordinator),
+            );
             const name = splitOnboardingProjectPath(project.workspaceRoot).name;
             return (
               <div key={project.projectKey} className="flex flex-col gap-px">
@@ -150,27 +157,39 @@ export function ForkSidebarCoordinators(props: {
                 </button>
                 {isOpen ? (
                   <div className="flex flex-col gap-px ps-4">
-                    <button
-                      type="button"
-                      aria-current={coordinatorActive ? "page" : undefined}
-                      disabled={opening === project.projectKey}
-                      className={rowClassName(coordinatorActive)}
-                      onClick={() => {
-                        if (coordinator)
-                          props.onOpenThread(
-                            scopeThreadRef(coordinator.environmentId, coordinator.id),
-                          );
-                        else if (home)
-                          void openCoordinator(project.projectKey, {
-                            environmentId: home.environmentId,
-                            projectId: home.projectId,
-                            global: false,
-                          });
-                      }}
-                    >
-                      <MessagesSquareIcon aria-hidden className="size-4 shrink-0" />
-                      <span className="min-w-0 flex-1 truncate">{gt("Coordinator")}</span>
-                    </button>
+                    {members.map(({ member, coordinator }) => {
+                      const memberKey = `${member.environmentId}:${member.id}`;
+                      const active =
+                        coordinator !== undefined && props.routeRowThreadKey === keyOf(coordinator);
+                      return (
+                        <button
+                          key={memberKey}
+                          type="button"
+                          aria-current={active ? "page" : undefined}
+                          disabled={opening === memberKey}
+                          className={rowClassName(active)}
+                          onClick={() => {
+                            if (coordinator)
+                              props.onOpenThread(
+                                scopeThreadRef(coordinator.environmentId, coordinator.id),
+                              );
+                            else
+                              void openCoordinator(memberKey, {
+                                environmentId: member.environmentId,
+                                projectId: member.id,
+                                global: false,
+                              });
+                          }}
+                        >
+                          <MessagesSquareIcon aria-hidden className="size-4 shrink-0" />
+                          <span className="min-w-0 flex-1 truncate">
+                            {members.length > 1
+                              ? splitOnboardingProjectPath(member.workspaceRoot).name
+                              : gt("Coordinator")}
+                          </span>
+                        </button>
+                      );
+                    })}
                     {threadCount > 0 ? (
                       <button
                         type="button"

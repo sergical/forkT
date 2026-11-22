@@ -398,7 +398,7 @@ export function ForkOnboarding({
                       <li>
                         <button
                           type="button"
-                          className="w-full cursor-pointer px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                          className="w-full cursor-pointer px-3 py-2 text-left text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                           onClick={() => setShowMore(true)}
                         >
                           {gt("Show {count} more", { count: line.more.length })}
@@ -449,7 +449,7 @@ export function ForkOnboarding({
                   key={choice.value}
                   type="button"
                   className={cn(
-                    "grid cursor-pointer gap-0.5 rounded-xl border px-3.5 py-2.5 text-left hover:bg-muted",
+                    "grid cursor-pointer gap-0.5 rounded-xl border px-3.5 py-2.5 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                     choice.primary && "border-primary",
                   )}
                   onClick={() => answer.current?.(choice.value)}
