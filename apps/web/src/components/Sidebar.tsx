@@ -3654,6 +3654,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                   key={`project-folder-coordinator:${folder.group.projectKey}`}
                                   environmentId={coordinatorProject.environmentId}
                                   projectId={coordinatorProject.projectId}
+                                  folderRow={sidebarFolderRowId(folder.group.projectKey)}
                                   onOpenThread={(threadRef) => void navigateToThread(threadRef)}
                                 />,
                               );

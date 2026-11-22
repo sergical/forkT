@@ -80,6 +80,8 @@ export function ForkSidebarCoordinators(props: {
 export function ForkFolderCoordinatorRow(props: {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
+  /** The folder's tree row, so arrow keys reach this row like its threads. */
+  readonly folderRow: string;
   readonly onOpenThread: (threadRef: ScopedThreadRef) => void;
 }) {
   const gt = useGT();
@@ -99,6 +101,8 @@ export function ForkFolderCoordinatorRow(props: {
     <li className="list-none">
       <button
         type="button"
+        data-sidebar-row={`${props.folderRow}:coordinator`}
+        data-sidebar-parent={props.folderRow}
         disabled={opening}
         className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 ps-9 text-left text-sm text-sidebar-muted-foreground outline-none hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onClick={() => void openProject()}
