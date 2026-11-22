@@ -444,7 +444,8 @@ function useSidebarThreads(input: {
   readonly departingThreadKey: string | null;
   // Set in boring mode: the project groups to fold active threads into, in order.
   readonly folderGroups: readonly SidebarProjectSnapshot[] | null;
-  // Keeps folders with no active threads, so a project the user filtered to or pinned can start one.
+  // Keeps folders with no active threads, so a project the user filtered to or pinned can start
+  // one, and a T3 fork project can open its coordinator.
   readonly keepEmptyFolders: (group: SidebarProjectSnapshot) => boolean;
 }) {
   const {
@@ -1134,7 +1135,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       coordinatedProjectKeys.has(`${ref.environmentId}:${ref.projectId}`),
     )
       ? undefined
-      : group.memberProjectRefs[0];
+      : { environmentId: group.environmentId, projectId: group.id };
   const promotingDraftThreadKeys = usePromotingDraftThreadKeys();
   const listedThreads =
     promotingDraftThreadKeys.length === 0
@@ -1384,7 +1385,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         : scopedProjectGroups
       : null,
     keepEmptyFolders: (group) =>
-      scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
+      scopedProjectGroups.length > 0 ||
+      (!group.archived && (group.pinned || folderCoordinatorPlaceholder(group) !== undefined)),
   });
 
   // Ranked across environments as the palette ranks them, so one
