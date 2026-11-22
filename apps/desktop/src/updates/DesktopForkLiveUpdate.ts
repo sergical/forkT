@@ -7,10 +7,12 @@ import * as NodeTimers from "node:timers";
 import { ForkLiveUpdateStateSchema, type ForkLiveUpdateState } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
+import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopIpc from "../ipc/DesktopIpc.ts";
@@ -18,8 +20,14 @@ import {
   launchForkPendingInstaller,
   readForkPendingUpdate,
   readForkPendingVersion,
+  resolveForkPendingUpdatePaths,
   type ForkPendingUpdatePaths,
 } from "./forkPendingUpdate.ts";
+import {
+  consumeForkRestartFailure,
+  forkCoordinatorRestartRoute,
+  forkRestartReadiness,
+} from "./forkRestartReadiness.ts";
 
 async function watchForkPendingUpdate(
   paths: ForkPendingUpdatePaths,
@@ -68,33 +76,28 @@ async function watchForkPendingUpdate(
 export const installDesktopForkLiveUpdate = Effect.fn("desktop.forkLiveUpdate.install")(
   function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
-    if (environment.platform !== "darwin") return;
-    const env = yield* HostProcess.Environment;
-    const defaultAppPath = "/Applications/T3 fork.app";
-    const appPath = env.T3_FORK_SYNC_APP_PATH ?? defaultAppPath;
-    const scratchState = env.T3_FORK_SYNC_STATE_DIR;
-    if (!NodePath.isAbsolute(appPath) || !appPath.endsWith(".app")) return;
-    if (environment.isPackaged) {
-      if (NodePath.resolve(environment.resourcesPath, "../..") !== appPath) return;
-      if (appPath !== defaultAppPath && !scratchState) return;
-    } else if (!scratchState || appPath === defaultAppPath) {
-      return;
-    }
-
-    const home = environment.homeDirectory;
-    const paths: ForkPendingUpdatePaths = {
-      stateDir: scratchState ?? NodePath.join(home, ".t3-fork-lab", "sync"),
-      repo: env.T3_FORK_REPO ?? NodePath.join(home, "src", "t3code-fork"),
-      installerPath:
-        env.T3_FORK_SYNC_INSTALLER ??
-        NodePath.join(home, ".local", "bin", "t3-fork-install-pending"),
-      appPath,
-    };
+    const paths = resolveForkPendingUpdatePaths(environment, yield* HostProcess.Environment);
+    if (!paths) return;
     const ipc = yield* DesktopIpc.DesktopIpc;
     const windows = yield* ElectronWindow.ElectronWindow;
     const app = yield* ElectronApp.ElectronApp;
+    const dialog = yield* ElectronDialog.ElectronDialog;
     let state: ForkLiveUpdateState = { ready: null };
     let restarting = false;
+
+    if (!forkRestartReadiness(paths.stateDir, yield* HostProcess.Arguments)) {
+      const failure = yield* Effect.tryPromise({
+        try: () => consumeForkRestartFailure(paths.stateDir),
+        catch: String,
+      }).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("Could not read fork restart failure", cause).pipe(
+            Effect.as(undefined),
+          ),
+        ),
+      );
+      if (failure) yield* dialog.showErrorBox("T3 fork could not restart", failure);
+    }
 
     yield* ipc.handle(
       DesktopIpc.makeIpcMethod({
@@ -112,10 +115,14 @@ export const installDesktopForkLiveUpdate = Effect.fn("desktop.forkLiveUpdate.in
         handler: Effect.fn("desktop.forkLiveUpdate.restart")(function* (version) {
           if (restarting || version !== state.ready?.version) return false;
           restarting = true;
+          const main = yield* windows.main;
+          const route = Option.isSome(main)
+            ? forkCoordinatorRestartRoute(main.value.webContents.getURL())
+            : undefined;
           const launched = yield* Effect.tryPromise({
             try: async () => {
               if ((await readForkPendingVersion(paths.stateDir)) !== version) return false;
-              await launchForkPendingInstaller(paths, version);
+              await launchForkPendingInstaller(paths, version, route);
               return true;
             },
             catch: String,

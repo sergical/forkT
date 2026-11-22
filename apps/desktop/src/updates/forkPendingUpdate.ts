@@ -17,6 +17,37 @@ export interface ForkPendingUpdatePaths {
   readonly installerPath: string;
 }
 
+/** Limits the fork installer to the production bundle or an explicitly isolated copy. */
+export function resolveForkPendingUpdatePaths(
+  environment: {
+    readonly platform: NodeJS.Platform;
+    readonly homeDirectory: string;
+    readonly resourcesPath: string;
+    readonly isPackaged: boolean;
+  },
+  env: Readonly<NodeJS.ProcessEnv>,
+): ForkPendingUpdatePaths | null {
+  if (environment.platform !== "darwin") return null;
+  const defaultAppPath = "/Applications/T3 fork.app";
+  const appPath = env.T3_FORK_SYNC_APP_PATH ?? defaultAppPath;
+  const scratchState = env.T3_FORK_SYNC_STATE_DIR;
+  if (!NodePath.isAbsolute(appPath) || !appPath.endsWith(".app")) return null;
+  if (environment.isPackaged) {
+    if (NodePath.resolve(environment.resourcesPath, "../..") !== appPath) return null;
+    if (appPath !== defaultAppPath && !scratchState) return null;
+  } else if (!scratchState || appPath === defaultAppPath) {
+    return null;
+  }
+  const home = environment.homeDirectory;
+  return {
+    stateDir: scratchState ?? NodePath.join(home, ".t3-fork-lab", "sync"),
+    repo: env.T3_FORK_REPO ?? NodePath.join(home, "src", "t3code-fork"),
+    installerPath:
+      env.T3_FORK_SYNC_INSTALLER ?? NodePath.join(home, ".local", "bin", "t3-fork-install-pending"),
+    appPath,
+  };
+}
+
 async function readSyncVersion(file: string) {
   const version = await NodeFSP.readFile(file, "utf8").catch(() => "");
   return version.trim();
@@ -62,14 +93,20 @@ export async function readForkPendingUpdate(
   return { ready: { version, commits } };
 }
 
-/** Hands off the requested build before Electron begins its normal shutdown. */
-export async function launchForkPendingInstaller(paths: ForkPendingUpdatePaths, version: string) {
+/** Hands off the requested build and coordinator route before Electron begins shutting down. */
+export async function launchForkPendingInstaller(
+  paths: ForkPendingUpdatePaths,
+  version: string,
+  route: string | undefined,
+) {
+  const { stdout } = await exec(paths.installerPath, ["--restart-protocol"], { timeout: 15_000 });
+  if (stdout.trim() !== "1") throw new Error("Fork installer does not support verified restart");
   const log = await NodeFSP.open(NodePath.join(paths.stateDir, "restart.log"), "a");
   try {
     await new Promise<void>((resolve, reject) => {
       const child = NodeChildProcess.spawn(
         paths.installerPath,
-        ["--restart", String(NodeProcess.pid), version],
+        ["--restart", String(NodeProcess.pid), version, ...(route ? [route] : [])],
         {
           detached: true,
           env: {
