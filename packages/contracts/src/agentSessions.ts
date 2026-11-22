@@ -40,6 +40,8 @@ export const AgentSessionProjectCandidate = Schema.Struct({
   lastActiveAt: Schema.NullOr(IsoDateTime),
   alreadyImported: Schema.Boolean,
   git: Schema.optionalKey(Schema.NullOr(AgentSessionProjectGit)),
+  /** True when the project is inside a system temp directory. */
+  temporary: Schema.optionalKey(Schema.Boolean),
 });
 export type AgentSessionProjectCandidate = typeof AgentSessionProjectCandidate.Type;
 

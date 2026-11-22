@@ -389,10 +389,14 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
     it.effect("reads Claude project cwds from transcripts, newest first", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
+        const fileSystem = yield* FileSystem.FileSystem;
         const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
         const codexHomePath = yield* makeTempDir("t3code-codex-home-");
-        const olderWorkspace = yield* makeTempDir("t3code-workspace-older-");
-        const newerWorkspace = yield* makeTempDir("t3code-workspace-newer-");
+        const olderWorkspace = yield* fileSystem.realPath(yield* makeTempDir("ui-skill-eval-cwd."));
+        const newerWorkspace = yield* fileSystem.makeTempDirectoryScoped({
+          directory: NodeOS.homedir(),
+          prefix: "ui-skill-eval-cwd.",
+        });
 
         yield* writeTranscript({
           filePath: path.join(claudeHomePath, "projects", "-slug-older", "a.jsonl"),
@@ -432,6 +436,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             lastActiveAt: "2026-01-02T00:00:00.000Z",
             alreadyImported: false,
             git: null,
+            temporary: true,
           },
         ]);
       }),
@@ -479,6 +484,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             lastActiveAt: "2026-04-01T09:00:00.000Z",
             alreadyImported: true,
             git: null,
+            temporary: true,
           },
         ]);
       }),
@@ -560,6 +566,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             lastActiveAt: "2026-01-02T00:00:00.000Z",
             alreadyImported: true,
             git: null,
+            temporary: true,
           },
         ]);
       }),
@@ -1049,7 +1056,10 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
         const fileSystem = yield* FileSystem.FileSystem;
         const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
         const codexHomePath = yield* makeTempDir("t3code-codex-home-");
-        const repo = yield* makeTempDir("t3code-workspace-repo-");
+        const repo = yield* fileSystem.makeTempDirectoryScoped({
+          directory: NodeOS.homedir(),
+          prefix: "t3code-workspace-repo-",
+        });
         const worktree = yield* makeTempDir("t3code-workspace-worktree-");
         const plain = yield* makeTempDir("t3code-workspace-plain-");
         const noRemote = yield* makeTempDir("t3code-workspace-noremote-");
@@ -1138,6 +1148,9 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
 
         const result = yield* runScan({ claudeHomePath, codexHomePath, configBaseDir });
 
+        expect(
+          result.candidates.find((candidate) => candidate.path === repo)?.temporary,
+        ).toBeUndefined();
         expect(
           result.candidates.map((candidate) => ({
             path: candidate.path,
@@ -1428,6 +1441,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             lastActiveAt: "2026-05-03T00:00:00.000Z",
             alreadyImported: false,
             git: null,
+            temporary: true,
           },
         ]);
       }),

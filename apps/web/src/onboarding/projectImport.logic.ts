@@ -28,7 +28,7 @@ export function partitionOnboardingProjects<T extends AgentSessionProjectCandida
   return {
     available: candidates,
     recent: candidates.filter((candidate) => {
-      if (candidate.git === null) return false;
+      if (candidate.temporary || candidate.git === null) return false;
       if (importableThreadCount(candidate) < DEFAULT_SELECTION_MIN_THREADS) return false;
       if (candidate.lastActiveAt === null) return false;
       const lastActiveAt = Date.parse(candidate.lastActiveAt);

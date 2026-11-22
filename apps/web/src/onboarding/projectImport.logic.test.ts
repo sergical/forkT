@@ -85,20 +85,22 @@ describe("partitionOnboardingProjects", () => {
 });
 
 describe("splitOnboardingProjectList", () => {
-  const listed = (path: string) => ({ key: path, path });
+  const listed = (path: string) => ({ key: path, ...candidate(path) });
   const busy = listed("/projects/busy");
-  const quiet = listed("/projects/quiet");
+  const quiet = { ...listed("/projects/quiet"), threadCount: 2 };
   const added = listed("/projects/added");
   const isNew = (project: { readonly key: string }) => project !== added;
 
-  it("shows the default picks and puts every other new project behind show more", () => {
+  it("picks recent repos and leaves qualifying temp projects under show more", () => {
+    const temporary = { ...listed("/tmp/ui-skill-eval-cwd.GPrQtz"), temporary: true };
+    const { available, recent } = partitionOnboardingProjects([quiet, busy, temporary, added], now);
     const split = splitOnboardingProjectList({
-      available: [quiet, busy, added],
-      recent: [busy],
+      available,
+      recent: recent.filter(isNew),
       isNew,
     });
 
-    expect(split).toEqual({ shown: [busy], more: [quiet], picked: new Set([busy.key]) });
+    expect(split).toEqual({ shown: [busy], more: [quiet, temporary], picked: new Set([busy.key]) });
   });
 
   it("shows the rest unpicked when nothing qualifies by default", () => {

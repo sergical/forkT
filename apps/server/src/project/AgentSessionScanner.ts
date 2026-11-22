@@ -930,16 +930,31 @@ export const make = Effect.gen(function* () {
   const foldWorktreeCase = isWindows;
   const hostEnvironment = yield* HostProcess.Environment;
   const homeDir = yield* HostProcess.HomeDirectory;
+  const tempDir = path.resolve(NodeOS.tmpdir());
+  const realTempDir = yield* fileSystem.realPath(tempDir).pipe(Effect.orElseSucceed(() => tempDir));
   // `/private/tmp` is what macOS reports for sessions started in `/tmp`.
-  const excludedProjectRoots = new Set(
-    [homeDir, NodeOS.tmpdir(), "/tmp", "/private/tmp"].map((directory) =>
+  const tempRoots = new Set(
+    [tempDir, realTempDir, "/tmp", "/private/tmp"].map((directory) =>
       normalizeProjectPathForComparison(path.resolve(directory)),
     ),
   );
+  const excludedProjectRoots = new Set([
+    normalizeProjectPathForComparison(path.resolve(homeDir)),
+    ...tempRoots,
+  ]);
   const excludedProjectAncestors = [
     path.join(homeDir, "Downloads"),
     path.join(homeDir, "Documents", "Codex"),
   ];
+
+  const isTemporaryProjectPath = (candidatePath: string) => {
+    const normalized = normalizeProjectPathForComparison(candidatePath);
+    for (const root of tempRoots) {
+      const prefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+      if (normalized.startsWith(prefix)) return true;
+    }
+    return false;
+  };
 
   const isExcludedProjectPath = (candidatePath: string) =>
     excludedProjectRoots.has(normalizeProjectPathForComparison(candidatePath)) ||
@@ -1002,18 +1017,20 @@ export const make = Effect.gen(function* () {
     return `path:${normalizeProjectPathForComparison(realPath)}`;
   });
 
-  /** Stats a directory that may be offered as a project, or none when it is missing or excluded. */
-  const projectDirectoryStats = Effect.fn("AgentSessionScanner.projectDirectoryStats")(function* (
+  /** Reads a project directory's stats and real path, or none when it is missing or excluded. */
+  const readProjectDirectory = Effect.fn("AgentSessionScanner.readProjectDirectory")(function* (
     directory: string,
   ) {
-    if (isExcludedProjectPath(directory)) return Option.none<FileSystem.File.Info>();
+    if (isExcludedProjectPath(directory)) return Option.none();
     const stats = yield* statOption(directory);
     if (Option.isNone(stats) || stats.value.type !== "Directory") return Option.none();
     const realPath = yield* fileSystem
       .realPath(directory)
       .pipe(Effect.orElseSucceed(() => directory));
     // Symlinks can disguise excluded worktree paths; re-check their targets.
-    return isExcludedProjectPath(realPath) ? Option.none() : stats;
+    return isExcludedProjectPath(realPath)
+      ? Option.none()
+      : Option.some({ stats: stats.value, realPath });
   });
 
   // Paths whose own read outlived the deadline, mapped to when they may be read
@@ -1154,14 +1171,17 @@ export const make = Effect.gen(function* () {
   const resolveDirectoryProjects = Effect.fn("AgentSessionScanner.resolveDirectoryProjects")(
     function* (resolvedDirectories: ReadonlyArray<string>) {
       // Stat every directory first so one batch reads all git identities.
-      const directories = new Map<string, Option.Option<FileSystem.File.Info>>();
+      const directories = new Map<
+        string,
+        Effect.Success<ReturnType<typeof readProjectDirectory>>
+      >();
       for (const resolved of resolvedDirectories) {
         if (directories.has(resolved)) continue;
-        directories.set(resolved, yield* projectDirectoryStats(resolved));
+        directories.set(resolved, yield* readProjectDirectory(resolved));
       }
       const directoryGitIdentities = yield* readGitIdentities(
-        Array.from(directories).flatMap(([directory, stats]) =>
-          Option.isSome(stats) ? [directory] : [],
+        Array.from(directories).flatMap(([resolved, directory]) =>
+          Option.isSome(directory) ? [resolved] : [],
         ),
       );
       const projects = new Map<
@@ -1169,24 +1189,26 @@ export const make = Effect.gen(function* () {
         {
           readonly key: string;
           readonly path: string;
+          readonly realPath: string;
           readonly git: AgentSessionProjectGit | null;
           readonly worktreeGitDir: string | null;
         } | null
       >();
-      for (const [resolved, stats] of directories) {
+      for (const [resolved, directory] of directories) {
         const gitIdentity = directoryGitIdentities.get(resolved);
-        if (Option.isNone(stats) || gitIdentity === undefined) {
+        if (Option.isNone(directory) || gitIdentity === undefined) {
           projects.set(resolved, null);
         } else if (gitIdentity._tag === "Worktree") {
           const { mainCheckout } = gitIdentity;
-          const mainStats =
-            mainCheckout === null ? Option.none() : yield* projectDirectoryStats(mainCheckout);
+          const mainDirectory =
+            mainCheckout === null ? Option.none() : yield* readProjectDirectory(mainCheckout);
           projects.set(
             resolved,
-            mainCheckout !== null && Option.isSome(mainStats)
+            mainCheckout !== null && Option.isSome(mainDirectory)
               ? {
-                  key: yield* directoryIdentity(mainCheckout, mainStats.value),
+                  key: yield* directoryIdentity(mainCheckout, mainDirectory.value.stats),
                   path: mainCheckout,
+                  realPath: mainDirectory.value.realPath,
                   git: gitIdentity.git,
                   worktreeGitDir: gitIdentity.gitDir,
                 }
@@ -1194,8 +1216,9 @@ export const make = Effect.gen(function* () {
           );
         } else {
           projects.set(resolved, {
-            key: yield* directoryIdentity(resolved, stats.value),
+            key: yield* directoryIdentity(resolved, directory.value.stats),
             path: resolved,
+            realPath: directory.value.realPath,
             git: gitIdentity._tag === "Repository" ? gitIdentity.git : null,
             worktreeGitDir: null,
           });
@@ -1964,6 +1987,7 @@ export const make = Effect.gen(function* () {
       string,
       {
         path: string;
+        realPath: string;
         sources: Array<AgentSessionSource>;
         threadCount: number;
         recentThreadCount: number;
@@ -1992,6 +2016,7 @@ export const make = Effect.gen(function* () {
       if (!existing) {
         merged.set(project.key, {
           path: project.path,
+          realPath: project.realPath,
           sources: [candidate.source],
           threadCount: candidate.threadCount,
           recentThreadCount,
@@ -2046,6 +2071,9 @@ export const make = Effect.gen(function* () {
             : DateTime.formatIso(DateTime.makeUnsafe(entry.lastActiveAtMs)),
         alreadyImported: importedProject !== undefined,
         git: entry.git,
+        ...(isTemporaryProjectPath(candidatePath) || isTemporaryProjectPath(entry.realPath)
+          ? { temporary: true }
+          : {}),
       });
     }
 
