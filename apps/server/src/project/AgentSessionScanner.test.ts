@@ -162,6 +162,17 @@ const makeTempDir = Effect.fn("AgentSessionScanner.test.makeTempDir")(function* 
   return yield* fileSystem.makeTempDirectoryScoped({ prefix });
 });
 
+const makeProjectDirOutsideSystemTemp = Effect.fn(
+  "AgentSessionScanner.test.makeProjectDirOutsideSystemTemp",
+)(function* (prefix: string) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  return yield* fileSystem.makeTempDirectoryScoped({
+    directory: path.resolve(import.meta.dirname, "../../node_modules"),
+    prefix,
+  });
+});
+
 const writeTranscript = Effect.fn("AgentSessionScanner.test.writeTranscript")(function* (input: {
   readonly filePath: string;
   readonly contents: string;
@@ -393,10 +404,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
         const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
         const codexHomePath = yield* makeTempDir("t3code-codex-home-");
         const olderWorkspace = yield* fileSystem.realPath(yield* makeTempDir("ui-skill-eval-cwd."));
-        const newerWorkspace = yield* fileSystem.makeTempDirectoryScoped({
-          directory: NodeOS.homedir(),
-          prefix: "ui-skill-eval-cwd.",
-        });
+        const newerWorkspace = yield* makeProjectDirOutsideSystemTemp("ui-skill-eval-cwd.");
 
         yield* writeTranscript({
           filePath: path.join(claudeHomePath, "projects", "-slug-older", "a.jsonl"),
@@ -1056,10 +1064,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
         const fileSystem = yield* FileSystem.FileSystem;
         const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
         const codexHomePath = yield* makeTempDir("t3code-codex-home-");
-        const repo = yield* fileSystem.makeTempDirectoryScoped({
-          directory: NodeOS.homedir(),
-          prefix: "t3code-workspace-repo-",
-        });
+        const repo = yield* makeProjectDirOutsideSystemTemp("t3code-workspace-repo-");
         const worktree = yield* makeTempDir("t3code-workspace-worktree-");
         const plain = yield* makeTempDir("t3code-workspace-plain-");
         const noRemote = yield* makeTempDir("t3code-workspace-noremote-");
