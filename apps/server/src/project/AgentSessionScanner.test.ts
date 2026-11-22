@@ -1723,6 +1723,31 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
       }),
     );
 
+    it.effect("counts no more recent threads than one import brings", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+        const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+        const workspace = yield* makeTempDir("t3code-workspace-");
+        for (let index = 0; index < 101; index++) {
+          yield* writeTranscript({
+            filePath: path.join(claudeHomePath, "projects", "-busy", `session-${index}.jsonl`),
+            contents: claudeSessionLine(workspace),
+            mtimeMs: nowMs - index * 60_000,
+          });
+        }
+
+        const scan = yield* runScan({ claudeHomePath, codexHomePath });
+
+        expect(scan.candidates.find((candidate) => candidate.path === workspace)).toMatchObject({
+          threadCount: 101,
+          recentThreadCount: 100,
+        });
+      }),
+    );
+
     it.effect("keeps the provider instance that owns a custom session home", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;

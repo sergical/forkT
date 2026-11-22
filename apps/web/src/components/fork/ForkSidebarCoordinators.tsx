@@ -15,7 +15,10 @@ import { useState } from "react";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { cn } from "../../lib/utils";
 import { splitOnboardingProjectPath } from "../../onboarding/projectImport.logic";
-import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
+import type {
+  SidebarProjectGroupMember,
+  SidebarProjectSnapshot,
+} from "../../sidebarProjectGrouping";
 import { forkMemory } from "../../state/forkMemory";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { ProjectFavicon } from "../ProjectFavicon";
@@ -31,6 +34,21 @@ const rowClassName = (active: boolean) =>
       ? "bg-sidebar-row-active text-sidebar-foreground"
       : "text-sidebar-foreground/90 hover:bg-sidebar-row-hover",
   );
+
+/** A member's folder name, with its machine or parent folder when another member shares it. */
+function memberLabel(
+  member: SidebarProjectGroupMember,
+  members: ReadonlyArray<{ readonly member: SidebarProjectGroupMember }>,
+) {
+  const { name, parent } = splitOnboardingProjectPath(member.workspaceRoot);
+  const shared = members.some(
+    (other) =>
+      other.member !== member &&
+      splitOnboardingProjectPath(other.member.workspaceRoot).name === name,
+  );
+  if (!shared) return name;
+  return `${name} · ${member.environmentLabel ?? parent}`;
+}
 
 /**
  * T3 fork: coordinators live here instead of in the thread list. The main one is a fixed row;
@@ -183,9 +201,7 @@ export function ForkSidebarCoordinators(props: {
                         >
                           <MessagesSquareIcon aria-hidden className="size-4 shrink-0" />
                           <span className="min-w-0 flex-1 truncate">
-                            {members.length > 1
-                              ? splitOnboardingProjectPath(member.workspaceRoot).name
-                              : gt("Coordinator")}
+                            {members.length > 1 ? memberLabel(member, members) : gt("Coordinator")}
                           </span>
                         </button>
                       );
