@@ -56,6 +56,7 @@ import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.t
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { isForkRoutingThread } from "../project/forkCoordinatorRouting.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as EventSink from "./EventSink.ts";
@@ -593,6 +594,21 @@ const make = Effect.gen(function* () {
             yield* serverSettings.getSettings,
             input.projectId,
           ).settings;
+          const thread =
+            settings.forkCoordinatorRouting === undefined
+              ? null
+              : yield* threads.getThreadShell(threadId);
+          const routed = thread !== null && isForkRoutingThread(thread);
+          if (routed) {
+            const suffix = (yield* randomUuidV4).slice(0, 8);
+            return {
+              branch: formatGeneratedBranchName(suffix, {
+                mode: "static",
+                prefix: settings.branchNamePrefix,
+              }),
+              exactName: false,
+            };
+          }
           const modelSelection =
             settings.sourceControlWriterModelSelection === null
               ? settings.textGenerationModelSelection

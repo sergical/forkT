@@ -40,6 +40,7 @@ import {
   PullRequestUrlUnavailableError,
 } from "../../../pullRequest/pullRequestTarget.ts";
 import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
+import * as ServerSettings from "../../../serverSettings.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
 
 const dependencies = [
@@ -466,7 +467,7 @@ const WritePullRequestGuidesTool = Tool.make("write_pull_request_guides", {
   }),
   success: WritePullRequestGuidesResult,
   failure: PullRequestToolError,
-  dependencies: guideDependencies,
+  dependencies: [...guideDependencies, ServerSettings.ServerSettingsService],
 })
   .annotate(Tool.Title, "Write pull request guides")
   .annotate(Tool.Readonly, false)

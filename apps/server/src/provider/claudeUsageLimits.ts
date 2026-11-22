@@ -48,6 +48,7 @@ export const makeClaudeScopedLimitNames = Ref.make<ClaudeScopedLimitNames>({
 });
 
 const SCOPED_WINDOW_PREFIX = "seven_day_";
+const SCOPED_WINDOW_LABEL_PREFIX = "Weekly · ";
 const scopeToken = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
 
 function scopedWindowId(displayName: string): string {
@@ -63,6 +64,19 @@ export function windowLimitsModel(
   return model !== null && scopeToken(model).includes(window.id.slice(SCOPED_WINDOW_PREFIX.length));
 }
 
+/** Read the provider's model scope from the label that both live and cached Claude windows preserve. */
+export function claudeUsageWindowModelScope(
+  window: Pick<ServerProviderUsageWindow, "id" | "label">,
+) {
+  if (
+    window.id.startsWith(SCOPED_WINDOW_PREFIX) &&
+    window.label.startsWith(SCOPED_WINDOW_LABEL_PREFIX)
+  ) {
+    return window.label.slice(SCOPED_WINDOW_LABEL_PREFIX.length);
+  }
+  return undefined;
+}
+
 function scopedWindow(
   displayName: string,
   usedPercent: number,
@@ -71,7 +85,7 @@ function scopedWindow(
   return {
     id: scopedWindowId(displayName),
     kind: "weekly",
-    label: `Weekly · ${displayName}`,
+    label: `${SCOPED_WINDOW_LABEL_PREFIX}${displayName}`,
     windowDurationMins: WEEK_MINS,
     usedPercent: clampPercent(usedPercent),
     ...(resetsAt ? { resetsAt } : {}),

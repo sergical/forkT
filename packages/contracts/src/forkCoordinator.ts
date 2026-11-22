@@ -27,10 +27,30 @@ export const forkCoordinatorProjectId = (threadId: string): string | null => {
   return match ? match[1]! : null;
 };
 
+/** The coordinator owns its descendants through their persisted root thread id. */
+export const isForkCoordinatorThreadId = (threadId: string): boolean =>
+  isForkMainCoordinatorThreadId(threadId) || forkCoordinatorProjectId(threadId) !== null;
+
+export const ForkRoutingWindow = Schema.Struct({
+  label: Schema.String,
+  remainingPercent: Schema.Number,
+  resetsAt: Schema.NullOr(Schema.String),
+  modelIds: Schema.optionalKey(Schema.Array(Schema.String)),
+  providerIds: Schema.optionalKey(Schema.Array(Schema.String)),
+  modelScope: Schema.optionalKey(Schema.String),
+});
+
+export const ForkRoutingRecommendation = Schema.Struct({
+  selection: Schema.NullOr(ModelSelection),
+  reason: Schema.String,
+  limitingWindow: Schema.optionalKey(ForkRoutingWindow),
+});
+
 export const ForkCoordinator = Schema.Struct({
   projectId: ProjectId,
   global: Schema.Boolean,
   threadId: ThreadId,
+  routing: Schema.optionalKey(ForkRoutingRecommendation),
 });
 export type ForkCoordinator = typeof ForkCoordinator.Type;
 

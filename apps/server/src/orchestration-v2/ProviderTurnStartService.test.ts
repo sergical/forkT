@@ -1,3 +1,4 @@
+import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
 import {
   serializeAssistantCitation,
   expandAssistantCitationsForProvider,
@@ -103,11 +104,14 @@ const normalize = (target: string) => {
   }
   return `/${parts.join("/")}`;
 };
-const layerWorktreeLocation = (worktreesDir = managedWorktreesDir) =>
+const layerWorktreeLocation = (
+  worktreesDir = managedWorktreesDir,
+  settings?: Parameters<typeof ServerSettings.layerTest>[0],
+) =>
   Layer.mergeAll(
     Path.layer,
     Layer.mock(ServerConfig.ServerConfig)({ worktreesDir } as ServerConfig.ServerConfig["Service"]),
-    ServerSettings.layerTest(),
+    ServerSettings.layerTest(settings),
   );
 
 function startWithMissingWorktree(
@@ -168,6 +172,7 @@ function startWithMissingWorktree(
   const createWorktree = vi.fn(() => Effect.succeed({} as never));
   const listLocalBranchNames = vi.fn(() => Effect.succeed(["feature/restore"]));
   const layer = ProviderTurnStart.layer.pipe(
+    Layer.provide(ProviderRegistryMock.layer([])),
     Layer.provide(
       Layer.mock(ForkCoordinatorStore.ForkCoordinatorStore)({
         forThread: () => Effect.succeed(null),
@@ -470,6 +475,7 @@ function makeLocalCommandHarness(input: {
   readonly text: string;
   readonly memoryBrief?: string;
   readonly coordinator?: boolean;
+  readonly forkRootThreadId?: ThreadId;
   readonly manualContinuation?: boolean;
   readonly nativeResumeUnsupported?: boolean;
   readonly steeringRestart?: boolean;
@@ -597,7 +603,11 @@ function makeLocalCommandHarness(input: {
       projectId: ProjectId.make("project-native-account-command"),
       branch: input.worktreePath === undefined ? null : "feature/restore",
       worktreePath: input.worktreePath ?? null,
-      lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+      lineage: {
+        parentThreadId: input.forkRootThreadId ?? null,
+        relationshipToParent: input.forkRootThreadId === undefined ? null : "subagent",
+        rootThreadId: input.forkRootThreadId ?? threadId,
+      },
     } as OrchestrationV2ThreadProjection["thread"],
     runs: [
       ...(input.previousNativeSession
@@ -1344,6 +1354,7 @@ function makeLocalCommandHarness(input: {
     ),
   );
   const layer = ProviderTurnStart.layer.pipe(
+    Layer.provide(ProviderRegistryMock.layer([])),
     Layer.provide(
       Layer.mock(ForkCoordinatorStore.ForkCoordinatorStore)({
         forThread: (threadId) =>
@@ -1384,7 +1395,17 @@ function makeLocalCommandHarness(input: {
         }),
         IdAllocator.layer,
         Layer.mock(TurnItemPositionStore.TurnItemPositionStoreV2)({}),
-        layerWorktreeLocation(input.worktreesDir),
+        layerWorktreeLocation(
+          input.worktreesDir,
+          input.forkRootThreadId === undefined
+            ? {}
+            : {
+                forkCoordinatorRouting: {
+                  excludedDrivers: [],
+                  excludedInstances: [newInstanceId],
+                },
+              },
+        ),
         layerNoTaskFolders,
         input.fileSystem === undefined
           ? FileSystem.layerNoop({ exists: () => Effect.succeed(true) })
@@ -2295,6 +2316,21 @@ effectIt.effect("delivers memory and coordinator role on ordinary turns without 
     expect(text).toContain("SAVED_MEMORY");
     expect(text).toContain("persistent coordinator");
     expect(text).toContain("Check retries");
+  }),
+);
+
+effectIt.effect("blocks a queued fork descendant before opening the provider", () =>
+  Effect.gen(function* () {
+    const forkRootThreadId = ThreadId.make("fork:global:1");
+    const harness = makeLocalCommandHarness({ text: "Review the change", forkRootThreadId });
+    yield* harness.start;
+    expect(harness.open).not.toHaveBeenCalled();
+    expect(harness.startTurn).not.toHaveBeenCalled();
+    expect(
+      harness.events.some(
+        (event) => event.type === "run.updated" && event.payload.status === "failed",
+      ),
+    ).toBe(true);
   }),
 );
 

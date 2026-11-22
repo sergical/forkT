@@ -1,4 +1,12 @@
 import {
+  forkRoutedThreadId,
+  forkRoutingUsageSnapshot,
+  verifyForkDispatch,
+  isForkRoutingThread,
+  recommendForkRoute,
+  refreshForkRoutingProviders,
+} from "../project/forkCoordinatorRouting.ts";
+import {
   CommandId,
   type RunId,
   isProviderAvailable,
@@ -1802,6 +1810,74 @@ const make = Effect.gen(function* () {
     };
   });
 
+  const forkRoutingSettings = Effect.fn("OrchestratorMcpService.forkRoutingSettings")(function* (
+    parent: Pick<OrchestrationV2ThreadProjection, "thread"> | undefined,
+  ) {
+    if (parent === undefined || !isForkRoutingThread(parent.thread)) return undefined;
+    const settings = yield* serverSettings.getSettings.pipe(
+      Effect.mapError(() =>
+        failure("orchestration_error", "Unable to read fork routing settings."),
+      ),
+    );
+    return settings.forkCoordinatorRouting === undefined ? undefined : settings;
+  });
+
+  const resolveForkDispatch = Effect.fn("OrchestratorMcpService.resolveForkDispatch")(function* (
+    input: Parameters<typeof resolveTargetRechecking>[0] & {
+      readonly role?: OrchestratorMcpDelegateTaskInput["role"] | undefined;
+      readonly highJudgment?: boolean | undefined;
+    },
+  ) {
+    const settings = input.skipProjectEnablementFilter
+      ? undefined
+      : yield* forkRoutingSettings(input.parent);
+    if (settings === undefined) return yield* resolveTargetRechecking(input);
+    const inherited = input.parent.thread.modelSelection;
+    const target =
+      input.target?.options !== undefined &&
+      input.target.model === undefined &&
+      input.target.driverKind === undefined &&
+      input.target.providerInstanceId === undefined
+        ? { ...input.target, providerInstanceId: inherited.instanceId, model: inherited.model }
+        : input.target;
+    const adapterIds = yield* loadOrchestrationCapableInstanceIds();
+    const routingInput = {
+      providers: input.providers,
+      projectId: input.parent.thread.projectId,
+      settings,
+      target,
+      role: input.role,
+      highJudgment: input.highJudgment,
+      defaultSelection: inherited,
+      fallbackSelection: resolveProjectSettings(settings, input.parent.thread.projectId).settings
+        .fallbackModelSelection,
+    };
+    const providers = withWorkspaceModels(
+      yield* refreshForkRoutingProviders(providerRegistry, routingInput),
+      input.cwd,
+    ).filter((provider) => adapterIds.has(provider.instanceId));
+    const recommendation = recommendForkRoute({
+      ...routingInput,
+      providers,
+      now: yield* Clock.currentTimeMillis,
+    });
+    if (recommendation.selection === null)
+      return yield* failure("provider_unavailable", recommendation.reason);
+    const resolved = yield* resolveTarget({
+      ...input,
+      providers,
+      target: {
+        ...target,
+        providerInstanceId: recommendation.selection.instanceId,
+        model: recommendation.selection.model,
+        ...(target?.options === undefined && recommendation.selection.options !== undefined
+          ? { options: recommendation.selection.options }
+          : {}),
+      },
+    });
+    return resolved;
+  });
+
   const requestKey = (clientRequestId: string | undefined): Effect.Effect<string> =>
     clientRequestId === undefined ? random.uuidV4() : Effect.succeed(clientRequestId);
 
@@ -2387,6 +2463,12 @@ const make = Effect.gen(function* () {
             : "bindToCurrentThread binds to this thread, which belongs to a different project.",
         );
       }
+      const routingSettings = yield* forkRoutingSettings(parent);
+      if (!bindToCurrentThread && routingSettings !== undefined)
+        return yield* failure(
+          "invalid_request",
+          "Bind this fork schedule to its current thread so subscription routing can check each run.",
+        );
       const modelSelection =
         parent?.thread.modelSelection ?? (yield* projectDefaultModelSelection(project));
       // Never end on a lone high surrogate, which renders as a broken character.
@@ -2489,6 +2571,11 @@ const make = Effect.gen(function* () {
             : input.bindToCurrentThread && parent !== undefined
               ? parent.thread.id
               : null;
+        if (threadId !== parent?.thread.id && (yield* forkRoutingSettings(parent)) !== undefined)
+          return yield* failure(
+            "invalid_request",
+            "Bind this fork schedule to its current thread so subscription routing can check each run.",
+          );
         // Reset the workspace only when the binding flips, so unbinding cannot leave runs in the shared checkout.
         const workspaceStrategy =
           (threadId === null) === (existing.threadId === null)
@@ -2722,9 +2809,23 @@ const make = Effect.gen(function* () {
     capabilities: Effect.fn("OrchestratorMcpService.capabilities")(function* (scope, input = {}) {
       const { parent, limits } = yield* loadCaller(scope, []);
       const cwd = parent === undefined ? undefined : yield* parentWorkspaceCwd(parent);
+      const routingSettings = yield* forkRoutingSettings(parent);
       const machineProviders = yield* loadProviders;
+      const routingInput =
+        parent === undefined || routingSettings === undefined
+          ? undefined
+          : {
+              settings: routingSettings,
+              projectId: parent.thread.projectId,
+              providers: machineProviders,
+              defaultSelection: parent.thread.modelSelection,
+              fallbackSelection: resolveProjectSettings(routingSettings, parent.thread.projectId)
+                .settings.fallbackModelSelection,
+              role: input.role,
+              highJudgment: input.highJudgment,
+            };
       const unscanned =
-        cwd === undefined
+        cwd === undefined || routingInput !== undefined
           ? []
           : machineProviders.filter(
               (provider) =>
@@ -2746,8 +2847,20 @@ const make = Effect.gen(function* () {
         Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
       );
       const inherited = parent?.thread.modelSelection;
+      const now = yield* Clock.currentTimeMillis;
+      const routing =
+        routingInput === undefined
+          ? undefined
+          : recommendForkRoute({
+              ...routingInput,
+              providers: providers.filter((provider) =>
+                orchestrationCapableInstanceIds.has(provider.instanceId),
+              ),
+              now,
+            });
       const searchTerms = input.search?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
       return {
+        ...(routing === undefined ? {} : { routing }),
         parentThreadId: parent?.thread.id ?? null,
         inheritedProviderInstanceId: inherited?.instanceId ?? null,
         inheritedModel: inherited?.model ?? null,
@@ -2774,6 +2887,12 @@ const make = Effect.gen(function* () {
             enabledForCaller ? provider : { ...provider, enabled: false },
             orchestrationCapableInstanceIds.has(provider.instanceId),
           );
+          const routingUsage =
+            routingInput === undefined
+              ? undefined
+              : forkRoutingUsageSnapshot({ ...routingInput, provider, now });
+          const routingAllowsProvider =
+            routingUsage === undefined || routingUsage.state === "available";
           const { listed, omitted } = listCapabilityModels({
             provider,
             preferences: settings.providerModelPreferences?.[provider.instanceId],
@@ -2805,8 +2924,9 @@ const make = Effect.gen(function* () {
             provider.supportedRuntimeModes.length === 0
               ? {}
               : { runtimeModes: [...provider.supportedRuntimeModes] }),
-            canRunChildTask: constraints.length === 0,
-            canRunCrossProviderChildTask: constraints.length === 0,
+            ...(routingUsage === undefined ? {} : { routingUsage }),
+            canRunChildTask: constraints.length === 0 && routingAllowsProvider,
+            canRunCrossProviderChildTask: constraints.length === 0 && routingAllowsProvider,
             constraints: [...constraints],
           };
         }),
@@ -2829,7 +2949,12 @@ const make = Effect.gen(function* () {
           : PeerForwarding.remoteTarget(callerScope, input.target.environmentId);
       if (input.target !== undefined && environmentId !== undefined) {
         yield* requireCapability(callerScope);
-        const scope = yield* requireThreadScope(callerScope, "delegate_task");
+        const { scope, parent } = yield* loadThreadCaller(callerScope, "delegate_task");
+        if ((yield* forkRoutingSettings(parent)) !== undefined)
+          return yield* failure(
+            "invalid_request",
+            "Fork subscription routing can verify accounts only in this environment. Choose a local target.",
+          );
         // The task's child runs as an ordinary thread there; this thread keeps the task.
         const { taskId } = yield* remoteDelegation.delegate(scope, {
           ...input,
@@ -2870,9 +2995,11 @@ const make = Effect.gen(function* () {
         operation: "delegate-task",
       });
       const isRetryOfAcceptedDelegation = yield* threadManagement.hasReceipt(commandId);
-      const target = yield* resolveTargetRechecking({
+      const target = yield* resolveForkDispatch({
         parent,
         target: input.target,
+        role: input.role,
+        highJudgment: input.highJudgment,
         providers,
         cwd: yield* parentWorkspaceCwd(parent),
         skipProjectEnablementFilter: isRetryOfAcceptedDelegation,
@@ -3236,18 +3363,31 @@ const make = Effect.gen(function* () {
                 operation: "create-thread",
                 index,
               });
-              const threadId = stableThreadId({
+              const standardThreadId = stableThreadId({
                 scope,
                 requestKey: key,
                 index,
               });
               const isRetryOfAcceptedCreation = yield* threadManagement.hasReceipt(commandId);
-              const committedThread = isRetryOfAcceptedCreation
+              const routingConfigured = (yield* forkRoutingSettings(parent)) !== undefined;
+              const routedThreadId = forkRoutedThreadId(standardThreadId);
+              const committed = isRetryOfAcceptedCreation
                 ? yield* threadManagement
-                    .getThreadShell(threadId)
+                    .getThreadShell(standardThreadId)
                     .pipe(Effect.mapError(threadManagementFailure))
                 : null;
-              const target = yield* resolveTargetRechecking({
+              const threadId =
+                isForkRoutingThread(parent.thread) &&
+                (isRetryOfAcceptedCreation || routingConfigured)
+                  ? (committed?.id ?? routedThreadId)
+                  : standardThreadId;
+              const committedThread = isRetryOfAcceptedCreation
+                ? (committed ??
+                  (yield* threadManagement
+                    .getThreadShell(threadId)
+                    .pipe(Effect.mapError(threadManagementFailure))))
+                : null;
+              const target = yield* resolveForkDispatch({
                 parent,
                 target:
                   committedThread === null
@@ -3649,6 +3789,17 @@ const make = Effect.gen(function* () {
 
       const mode = input.mode ?? "auto";
       const key = yield* requestKey(input.clientRequestId);
+      const commandId = stableCommandId({ scope, requestKey: key, operation: "thread-send" });
+      const routingSettings = yield* forkRoutingSettings(parent);
+      if (routingSettings !== undefined && !(yield* threadManagement.hasReceipt(commandId))) {
+        const route = yield* verifyForkDispatch(
+          providerRegistry,
+          routingSettings,
+          target.thread.projectId,
+          target.thread.modelSelection,
+        );
+        if (route.selection === null) return yield* failure("provider_unavailable", route.reason);
+      }
       const messageId = stableOperationMessageId({
         scope,
         requestKey: key,
@@ -3657,11 +3808,7 @@ const make = Effect.gen(function* () {
       const result = yield* threadManagement
         .sendToThread({
           projectId: target.thread.projectId,
-          commandId: stableCommandId({
-            scope,
-            requestKey: key,
-            operation: "thread-send",
-          }),
+          commandId,
           threadId: input.threadId,
           ...(parent === undefined ? {} : { senderThreadId: parent.thread.id }),
           // A linked environment's agent has no thread here; the link names it.

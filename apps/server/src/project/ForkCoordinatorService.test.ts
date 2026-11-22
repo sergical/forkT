@@ -5,6 +5,9 @@ import {
   MessageId,
   ProjectId,
   ProviderInstanceId,
+  ProviderDriverKind,
+  type ServerSettings as ServerSettingsValue,
+  type ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -30,7 +33,12 @@ const record = {
 };
 const message = { commandId: CommandId.make("home-send-1"), text: "Plan the next change" };
 
-const harness = (existing: boolean, scratch = true) => {
+const harness = (
+  existing: boolean,
+  scratch = true,
+  settings = DEFAULT_SERVER_SETTINGS,
+  providers: readonly ServerProvider[] = [],
+) => {
   const launched: Array<ThreadLaunchService.ThreadLaunchInput> = [];
   const sent: Array<ThreadManagement.ThreadManagementSendInput> = [];
   const claims: Array<string> = [];
@@ -41,7 +49,7 @@ const harness = (existing: boolean, scratch = true) => {
           get: () => Effect.succeed(existing ? record : null),
           claim: (input) => {
             claims.push(input.projectId);
-            return Effect.succeed(record);
+            return Effect.succeed({ ...record, modelSelection: input.modelSelection });
           },
         }),
         Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
@@ -64,9 +72,12 @@ const harness = (existing: boolean, scratch = true) => {
             }),
         }),
         Layer.mock(ServerSettings.ServerSettingsService)({
-          getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+          getSettings: Effect.succeed(settings),
         }),
-        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        Layer.mock(ProviderRegistry.ProviderRegistry)({
+          getProviders: Effect.succeed(providers),
+          refreshInstance: () => Effect.succeed(providers),
+        }),
         Layer.mock(ThreadLaunchService.ThreadLaunchService)({
           launch: (input) => {
             launched.push(input);
@@ -142,4 +153,75 @@ it.effect.each([
     assert.deepStrictEqual(claims, [host]);
     assert.strictEqual(sent[0]?.text, message.text);
   }),
+);
+
+it.effect.each([true, false])(
+  "uses the eligible subscription when opening coordinator (global=%s)",
+  (global) =>
+    Effect.gen(function* () {
+      const codex = record.modelSelection.instanceId;
+      const claude = ProviderInstanceId.make("claudeAgent");
+      const snapshot = (
+        driver: string,
+        instanceId: ProviderInstanceId,
+        slug: string,
+        usedPercent: number,
+      ): ServerProvider => ({
+        instanceId,
+        driver: ProviderDriverKind.make(driver),
+        enabled: true,
+        installed: true,
+        version: null,
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: "1970-01-01T00:00:00.000Z",
+        models: [{ slug, name: slug, isCustom: false, capabilities: null }],
+        slashCommands: [],
+        skills: [],
+        usageLimits: {
+          checkedAt: "1970-01-01T00:00:00.000Z",
+          windows: [
+            {
+              id: driver === "claude" ? "seven_day" : "secondary",
+              label: "Weekly",
+              kind: "weekly",
+              usedPercent,
+              resetsAt:
+                driver === "claude" ? "1970-01-04T10:00:00.000Z" : "1970-01-04T04:00:00.000Z",
+            },
+          ],
+        },
+      });
+      const excluded = { instanceId: claude, model: "claude-opus-5-5" };
+      const settings: ServerSettingsValue = {
+        ...DEFAULT_SERVER_SETTINGS,
+        defaultModelSelection: excluded,
+        forkCoordinatorRouting: {
+          excludedDrivers: [ProviderDriverKind.make("claude")],
+          excludedInstances: [],
+        },
+      };
+      const { launched, layer } = harness(false, true, settings, [
+        snapshot("claude", claude, excluded.model, 96),
+        snapshot("codex", codex, "gpt-6-2-astra", 46),
+      ]);
+      yield* Effect.gen(function* () {
+        const service = yield* ForkCoordinatorService.ForkCoordinatorService;
+        const opened = yield* service.open({ global, projectId });
+        assert.deepEqual(opened.routing?.limitingWindow, {
+          label: "Weekly",
+          remainingPercent: 54,
+          resetsAt: "1970-01-04T04:00:00.000Z",
+        });
+        assert.deepEqual(
+          launched.map((launch) => launch.modelSelection),
+          [{ instanceId: codex, model: "gpt-6-2-astra" }],
+        );
+        const refused = yield* service
+          .open({ global, projectId, modelSelection: excluded })
+          .pipe(Effect.result);
+        assert.strictEqual(refused._tag, "Failure");
+        assert.strictEqual(launched.length, 1);
+      }).pipe(Effect.provide(layer));
+    }),
 );

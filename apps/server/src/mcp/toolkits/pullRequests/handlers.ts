@@ -24,6 +24,8 @@ import * as Schema from "effect/Schema";
 
 import * as GitManager from "../../../git/GitManager.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
+import { isForkRoutingThread } from "../../../project/forkCoordinatorRouting.ts";
+import * as ServerSettings from "../../../serverSettings.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as PullRequestWatchService from "../../../pullRequest/PullRequestWatchService.ts";
 import { resolveTarget, type ResolvedTarget } from "../../../pullRequest/pullRequestTarget.ts";
@@ -879,6 +881,37 @@ const make = Effect.gen(function* () {
     unwatch_pull_request: writesThread((input) => setWatching(input, false)),
     write_pull_request_guides: McpToolAccess.writesWithCapability((input) =>
       Effect.gen(function* () {
+        const scope = yield* McpInvocationContext.McpInvocationContext;
+        if (scope.thread !== undefined) {
+          const thread = yield* engine.getThreadShell(scope.thread.threadId).pipe(
+            Effect.mapError(
+              (cause) =>
+                new PullRequestGuideFailedError({
+                  detail: "Could not verify the calling thread.",
+                  cause,
+                }),
+            ),
+          );
+          if (thread !== null && isForkRoutingThread(thread)) {
+            const settings = yield* ServerSettings.ServerSettingsService.use(
+              (settings) => settings.getSettings,
+            ).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new PullRequestGuideFailedError({
+                    detail: "Could not read fork routing settings.",
+                    cause,
+                  }),
+              ),
+            );
+            if (settings.forkCoordinatorRouting !== undefined) {
+              return yield* new PullRequestGuideFailedError({
+                detail:
+                  "Review guides use a separate model setting. Use delegate_task with role review for a subscription-checked review.",
+              });
+            }
+          }
+        }
         const located = yield* locateAll(input.pullRequests);
         const guides = yield* Effect.forEach(
           located,

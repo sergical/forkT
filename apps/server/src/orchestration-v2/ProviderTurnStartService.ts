@@ -45,6 +45,12 @@ import * as ForkCoordinatorStore from "../project/ForkCoordinatorStore.ts";
 import { forkCoordinatorInstructions } from "../project/forkCoordinatorInstructions.ts";
 import * as ForkMemoryService from "../project/ForkMemoryService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import {
+  isForkRoutingThread,
+  isForkRoutingThreadId,
+  verifyForkDispatch,
+} from "../project/forkCoordinatorRouting.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { makeRestoreMissingWorktree } from "../workspace/restoreMissingWorktree.ts";
@@ -286,6 +292,7 @@ export const layer: Layer.Layer<
   | ForkCoordinatorStore.ForkCoordinatorStore
   | ForkMemoryService.ForkMemoryService
   | ProjectService.ProjectService
+  | ProviderRegistry.ProviderRegistry
   | ProviderAuthService.ProviderAuthService
   | ProjectionStore.ProjectionStoreV2
   | ProviderSessionManager.ProviderSessionManagerV2
@@ -305,6 +312,8 @@ export const layer: Layer.Layer<
     const coordinators = yield* ForkCoordinatorStore.ForkCoordinatorStore;
     const memories = yield* ForkMemoryService.ForkMemoryService;
     const projects = yield* ProjectService.ProjectService;
+    const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
+    const serverSettings = yield* ServerSettings.ServerSettingsService;
     const providerAuth = yield* ProviderAuthService.ProviderAuthService;
     const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
@@ -713,6 +722,43 @@ export const layer: Layer.Layer<
           });
         },
       );
+      const senderId = providerMessage.senderThreadId;
+      const routedThread = isForkRoutingThread(projection.thread);
+      let forkRoutingEnabled = false;
+      if (routedThread || senderId !== undefined) {
+        const settings = yield* Effect.result(serverSettings.getSettings);
+        let refusal =
+          settings._tag === "Failure"
+            ? "Could not read fork routing settings. Try again after restoring Settings."
+            : null;
+        if (settings._tag === "Success" && settings.success.forkCoordinatorRouting !== undefined) {
+          const routedSender =
+            senderId !== undefined &&
+            (isForkRoutingThreadId(senderId) ||
+              (yield* projectionStore
+                .findThread(senderId)
+                .pipe(Effect.map((sender) => sender !== null && isForkRoutingThread(sender)))));
+          if (routedThread || routedSender) {
+            forkRoutingEnabled = true;
+            const route = yield* verifyForkDispatch(
+              providerRegistry,
+              settings.success,
+              projection.thread.projectId,
+              run.modelSelection,
+            );
+            if (route.selection === null) refusal = route.reason;
+          }
+        }
+        if (refusal !== null) {
+          yield* settleStartFailure({
+            signal: "fork-subscription-routing",
+            title: "Fork subscription could not start this turn",
+            error: new Error(refusal),
+          });
+          return;
+        }
+      }
+
       if (
         expandAssistantCitationsForProvider(providerMessage.text).length >
         PROVIDER_SEND_TURN_MAX_INPUT_CHARS
@@ -2147,7 +2193,9 @@ export const layer: Layer.Layer<
             ? yield* coordinators.forThread(input.threadId).pipe(Effect.orElseSucceed(() => null))
             : null;
           const coordinatorContext =
-            coordinator === null ? "" : forkCoordinatorInstructions(coordinator.scope === "global");
+            coordinator === null
+              ? ""
+              : forkCoordinatorInstructions(coordinator.scope === "global", forkRoutingEnabled);
           const memoryContext = includeForkContext
             ? yield* memories
                 .brief({

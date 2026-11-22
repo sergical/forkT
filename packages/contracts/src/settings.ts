@@ -1378,7 +1378,19 @@ export const CloudSpeechCredentials = Schema.Struct({
   openrouter: CloudSpeechCredential,
 });
 
+/** Environment-local opt-in for subscription routing, configured in settings.json. */
+export const ForkCoordinatorRoutingSettings = Schema.Struct({
+  excludedDrivers: Schema.Array(ProviderDriverKind).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  excludedInstances: Schema.Array(ProviderInstanceId).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+});
+export type ForkCoordinatorRoutingSettings = typeof ForkCoordinatorRoutingSettings.Type;
+
 export const ServerSettings = Schema.Struct({
+  forkCoordinatorRouting: Schema.optionalKey(ForkCoordinatorRoutingSettings),
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   providerModelPreferences: Schema.NullOr(ProviderModelPreferences).pipe(

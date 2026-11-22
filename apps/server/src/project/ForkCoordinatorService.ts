@@ -21,6 +21,9 @@ import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.t
 import * as ServerSettings from "../serverSettings.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 
+import * as Clock from "effect/Clock";
+import { recommendForkRoute, refreshForkRoutingProviders } from "./forkCoordinatorRouting.ts";
+
 export class ForkCoordinatorService extends Context.Service<
   ForkCoordinatorService,
   {
@@ -70,6 +73,36 @@ export const layer = Layer.effect(
         project.value,
       ).settings;
       const available = yield* providers.getProviders;
+      const routingInput = {
+        providers: available,
+        settings,
+        projectId: input.projectId,
+        highJudgment: true,
+        defaultSelection:
+          input.modelSelection ??
+          settings.defaultModelSelection ??
+          existing?.modelSelection ??
+          null,
+        fallbackSelection: settings.fallbackModelSelection,
+        ...(input.modelSelection === undefined
+          ? {}
+          : {
+              target: {
+                providerInstanceId: input.modelSelection.instanceId,
+                model: input.modelSelection.model,
+              },
+            }),
+      };
+      const routing =
+        settings.forkCoordinatorRouting === undefined
+          ? undefined
+          : recommendForkRoute({
+              ...routingInput,
+              providers: yield* refreshForkRoutingProviders(providers, routingInput),
+              now: yield* Clock.currentTimeMillis,
+            });
+      if (routing?.selection === null)
+        return yield* new ForkCoordinatorError({ message: routing.reason });
       const first = available.find(
         (provider) =>
           provider.enabled &&
@@ -78,6 +111,7 @@ export const layer = Layer.effect(
           provider.models.length > 0,
       );
       const modelSelection =
+        routing?.selection ??
         input.modelSelection ??
         settings.defaultModelSelection ??
         (available.some(
@@ -110,7 +144,12 @@ export const layer = Layer.effect(
         createdBy: "user",
         creationSource: "web",
       });
-      return { projectId: claimed.projectId, global: input.global, threadId: claimed.threadId };
+      return {
+        projectId: claimed.projectId,
+        global: input.global,
+        threadId: claimed.threadId,
+        ...(routing === undefined ? {} : { routing }),
+      };
     });
     const open = Effect.fn("ForkCoordinatorService.open")(
       function* (input: ForkCoordinatorOpenInput) {

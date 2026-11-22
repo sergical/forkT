@@ -32,6 +32,7 @@ import {
   ThreadPullRequestKey,
   ThreadPullRequestLinkSource,
 } from "./threadPullRequest.ts";
+import { ForkRoutingRecommendation, ForkRoutingWindow } from "./forkCoordinator.ts";
 import { secretRequestPageUrl } from "./secretRequest.ts";
 import { hasOnlyPairedSurrogates } from "./threadMetadataMcp.ts";
 import { LastThreadTitleRegeneration, ThreadTitleRegeneration } from "./threadTitle.ts";
@@ -176,6 +177,12 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   ),
   title: Schema.optional(OrchestratorMcpTitle),
   role: Schema.optional(OrchestratorMcpTaskRole),
+  highJudgment: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "For fork routing, choose a model for work that needs substantial judgment. Reviews and design default to true.",
+    }),
+  ),
   isolation: Schema.optional(
     Schema.Literals(["shared", "worktree"]).annotate({
       description:
@@ -642,6 +649,13 @@ export const OrchestratorMcpThreadInterruptResult = Schema.Struct({
 export type OrchestratorMcpThreadInterruptResult = typeof OrchestratorMcpThreadInterruptResult.Type;
 
 export const OrchestratorMcpCapabilitiesInput = Schema.Struct({
+  role: Schema.optionalKey(OrchestratorMcpTaskRole),
+  highJudgment: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "For fork routing, choose a model for work that needs substantial judgment. Reviews and design default to true.",
+    }),
+  ),
   environmentId: OrchestratorMcpEnvironmentTarget,
   search: Schema.optional(
     TrimmedNonEmptyString.check(Schema.isMaxLength(200)).annotate({
@@ -659,6 +673,23 @@ export const OrchestratorMcpModelOption = Schema.Struct({
 export type OrchestratorMcpModelOption = typeof OrchestratorMcpModelOption.Type;
 
 export const OrchestratorMcpProviderCapability = Schema.Struct({
+  routingUsage: Schema.optionalKey(
+    Schema.Struct({
+      state: Schema.Literals([
+        "available",
+        "excluded",
+        "exhausted",
+        "unknown",
+        "stale",
+        "unavailable",
+      ]),
+      checkedAt: Schema.NullOr(Schema.String),
+      planLabel: Schema.NullOr(Schema.String),
+      windows: Schema.Array(ForkRoutingWindow),
+      limitingWindow: Schema.optionalKey(ForkRoutingWindow),
+    }),
+  ),
+
   providerInstanceId: ProviderInstanceId,
   driverKind: ProviderDriverKind,
   displayName: Schema.NullOr(Schema.String),
@@ -701,6 +732,8 @@ export type OrchestratorMcpEnvironmentLinksResult =
   typeof OrchestratorMcpEnvironmentLinksResult.Type;
 
 export const OrchestratorMcpCapabilitiesResult = Schema.Struct({
+  routing: Schema.optionalKey(ForkRoutingRecommendation),
+
   parentThreadId: Schema.NullOr(ThreadId),
   inheritedProviderInstanceId: Schema.NullOr(ProviderInstanceId),
   inheritedModel: Schema.NullOr(Schema.String),
