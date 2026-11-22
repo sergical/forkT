@@ -21,7 +21,8 @@ import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/sh
 import {
   type ContextMenuItem,
   type EnvironmentId,
-  forkCoordinatorProjectId,
+  forkSidebarThreadRole,
+  isForkCoordinatorThreadId,
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type ThreadId,
@@ -284,6 +285,21 @@ export function resolveSidebarDropTarget(
   return { section, pinnedOrder, activeOrder };
 }
 
+/** Folder pins can move only over another ordinary pin in the same project. */
+export function reorderSidebarFolderPins(
+  pins: readonly string[],
+  activeKey: string,
+  overKey: string,
+): string[] | null {
+  const from = pins.indexOf(activeKey);
+  const to = pins.indexOf(overKey);
+  if (from < 0 || to < 0 || from === to) return null;
+  const order = [...pins];
+  order.splice(from, 1);
+  order.splice(to, 0, activeKey);
+  return order;
+}
+
 type SidebarThreadDropPlan =
   | { readonly kind: "none" }
   | {
@@ -356,6 +372,7 @@ export function resolveSidebarReorderableThreadKeys(input: {
   for (const thread of input.threads) {
     // Config is cached for offline rendering, so its presence does not make a row writable.
     if (
+      isForkCoordinatorThreadId(thread.id) ||
       !connectedEnvironmentIds.has(thread.environmentId) ||
       !input.serverConfigs.has(thread.environmentId)
     ) {
@@ -1086,6 +1103,7 @@ export function groupSidebarThreadsByProject<
   },
   TThread extends Pick<SidebarThreadSummary, "environmentId" | "projectId"> & {
     readonly id: string;
+    readonly pinnedAt?: string | null;
   },
 >(
   groups: readonly TGroup[],
@@ -1101,8 +1119,9 @@ export function groupSidebarThreadsByProject<
   }
   const place = (thread: TThread) =>
     folderByProject.get(`${thread.environmentId}:${thread.projectId}`)?.threads.push(thread);
-  for (const thread of threads) if (forkCoordinatorProjectId(thread.id) !== null) place(thread);
-  for (const thread of threads) if (forkCoordinatorProjectId(thread.id) === null) place(thread);
+  for (const role of ["coordinator", "pinned", "thread"] as const) {
+    for (const thread of threads) if (forkSidebarThreadRole(thread) === role) place(thread);
+  }
   return folders.filter((folder) => folder.threads.length > 0 || keepEmpty(folder.group));
 }
 
@@ -1117,7 +1136,7 @@ export function buildSidebarProjectFolders<
       readonly projectId: string;
     }>;
   },
-  TThread extends Pick<SidebarThreadSummary, "environmentId" | "id" | "projectId">,
+  TThread extends Pick<SidebarThreadSummary, "environmentId" | "id" | "projectId" | "pinnedAt">,
 >(input: {
   readonly groups: readonly TGroup[];
   readonly activeThreads: readonly TThread[];
@@ -1130,7 +1149,8 @@ export function buildSidebarProjectFolders<
   threads: readonly TThread[];
   hiddenThreads: readonly TThread[];
 }> {
-  const isRoute = (thread: TThread) =>
+  const isVisibleWhenCollapsed = (thread: TThread) =>
+    forkSidebarThreadRole(thread) !== "coordinator" &&
     scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === input.routeRowThreadKey;
   return groupSidebarThreadsByProject(input.groups, input.activeThreads, input.keepEmpty).map(
     (folder) => {
@@ -1138,8 +1158,10 @@ export function buildSidebarProjectFolders<
       return {
         group: folder.group,
         collapsed,
-        threads: collapsed ? folder.threads.filter(isRoute) : folder.threads,
-        hiddenThreads: collapsed ? folder.threads.filter((thread) => !isRoute(thread)) : [],
+        threads: collapsed ? folder.threads.filter(isVisibleWhenCollapsed) : folder.threads,
+        hiddenThreads: collapsed
+          ? folder.threads.filter((thread) => !isVisibleWhenCollapsed(thread))
+          : [],
       };
     },
   );

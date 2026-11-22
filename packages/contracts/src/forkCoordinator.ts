@@ -31,6 +31,12 @@ export const forkCoordinatorProjectId = (threadId: string): string | null => {
 export const isForkCoordinatorThreadId = (threadId: string): boolean =>
   isForkMainCoordinatorThreadId(threadId) || forkCoordinatorProjectId(threadId) !== null;
 
+/** Coordinator identity takes precedence over a legacy ordinary pin. */
+export function forkSidebarThreadRole(thread: { id: string; pinnedAt?: string | null }) {
+  if (isForkCoordinatorThreadId(thread.id)) return "coordinator";
+  return thread.pinnedAt == null ? "thread" : "pinned";
+}
+
 /** Fork routing accepts saved Claude exclusions from before the driver was identified as claudeAgent. */
 export const forkRoutingDriverKind = (driver: string): string =>
   driver === "claude" ? "claudeAgent" : driver;

@@ -3864,6 +3864,32 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       assert.equal(pinnedProjection.thread.settledOverride, "active");
       assert.isNotNull(pinnedProjection.thread.unsettledAt);
 
+      yield* orchestrator.dispatch({
+        type: "thread.unpin",
+        commandId: CommandId.make("runtime-layer-lifecycle-unpin"),
+        threadId,
+      });
+      assert.isNull((yield* orchestrator.getThreadProjection(threadId)).thread.pinnedAt);
+
+      const coordinatorId = ThreadId.make(`fork:project:${projectId}:1`);
+      yield* orchestrator.dispatch({
+        ...create,
+        commandId: CommandId.make("runtime-layer-lifecycle-coordinator"),
+        threadId: coordinatorId,
+        title: "Coordinator",
+      });
+      for (const type of ["thread.pin", "thread.unpin", "thread.pin.reorder"] as const) {
+        const rejected = yield* orchestrator
+          .dispatch({
+            type,
+            commandId: CommandId.make(`runtime-layer-lifecycle-coordinator-${type}`),
+            threadId: coordinatorId,
+            orderKey: "a0",
+          })
+          .pipe(Effect.flip);
+        assert.include(rejected.cause, "cannot be pinned or unpinned");
+      }
+
       const archive = yield* orchestrator.dispatch({
         type: "thread.archive",
         commandId: CommandId.make("runtime-layer-lifecycle-archive"),

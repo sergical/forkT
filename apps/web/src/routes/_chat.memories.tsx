@@ -1,8 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { ForkPage } from "../components/fork/ForkPage";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { validateMemoriesSearch } from "../components/fork/memories.logic";
 
 export const Route = createFileRoute("/_chat/memories")({
   validateSearch: validateMemoriesSearch,
-  component: ForkPage,
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: "/settings/memories", search, replace: true });
+  },
 });

@@ -84,7 +84,7 @@ export function useMemoryPaletteItems(query: string): CommandPaletteActionItem[]
     description: entry.scopeLabel,
     icon: <BookMarkedIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
-      await navigate({ to: "/memories", search: entry.search });
+      await navigate({ to: "/settings/memories", search: entry.search });
     },
   }));
 }

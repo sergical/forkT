@@ -55,7 +55,7 @@ export function ForkCoordinatorAccounts({ environmentId }: { environmentId: Envi
       }
       control={
         <div className="flex items-center gap-2">
-          <Link to="/usage" hash="limits" className="text-sm underline">
+          <Link to="/settings/usage" hash="limits" className="text-sm underline">
             <T>Usage limits</T>
           </Link>
           <Button

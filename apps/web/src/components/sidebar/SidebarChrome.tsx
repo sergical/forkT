@@ -267,7 +267,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     if (isMobile) {
       setOpenMobile(false);
     }
-    void navigate({ to: "/usage" });
+    void navigate({ to: "/settings/usage" });
   };
 
   const handleBackClick = () => {
@@ -293,7 +293,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label={gt("Memories")}
             onClick={() => {
               closeMobileSidebar();
-              void navigate({ to: "/memories", search: {} });
+              void navigate({ to: "/settings/memories", search: {} });
             }}
           />
           <SidebarUtilityItem

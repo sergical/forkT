@@ -1760,7 +1760,7 @@ function OpenCommandPaletteDialog(props: {
     icon: <BookMarkedIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({
-        to: "/memories",
+        to: "/settings/memories",
         search: {},
         state: (previous) => ({ ...previous, memoriesReset: (previous.memoriesReset ?? 0) + 1 }),
       });
@@ -1775,7 +1775,7 @@ function OpenCommandPaletteDialog(props: {
     icon: <ChartNoAxesColumnIcon className={ITEM_ICON_CLASS} />,
     shortcutCommand: "usage.open",
     run: async () => {
-      await navigate({ to: "/usage" });
+      await navigate({ to: "/settings/usage" });
     },
   });
 

@@ -13,7 +13,7 @@ import {
   runRanAfter,
   usageLimitBlockedRun,
 } from "@t3tools/shared/orchestrationV2ThreadError";
-import { threadIssueKeysEqual } from "@t3tools/contracts";
+import { isForkCoordinatorThreadId, threadIssueKeysEqual } from "@t3tools/contracts";
 import { canonicalizeGitCafePullRequestUrl } from "@t3tools/source-control-definitions/registry";
 import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
 import {
@@ -4553,6 +4553,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandId: command.commandId,
         commandType: command.type,
         cause: `Thread ${command.threadId} is archived.`,
+      });
+    }
+    if (
+      (command.type === "thread.pin" ||
+        command.type === "thread.unpin" ||
+        command.type === "thread.pin.reorder") &&
+      isForkCoordinatorThreadId(thread.id)
+    ) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Coordinator threads belong to their project and cannot be pinned or unpinned.",
       });
     }
     // Reject reorder after unpin so a raced request cannot restore a cleared pin.

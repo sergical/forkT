@@ -1,3 +1,4 @@
+import { isForkCoordinatorThreadId } from "@t3tools/contracts";
 import { msg, useGT, useMessages } from "gt-react";
 import { errorDisplayMessage, thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { m } from "~/i18n/messages";
@@ -729,6 +730,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       }
       if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return false;
       if (!activeThreadShell || !activeThreadRef || !serverConfigLoaded) return;
+      if (isForkCoordinatorThreadId(activeThreadRef.threadId)) return;
       void (
         activeThreadPinned ? confirmAndUnpinThread(activeThreadRef) : pinThread(activeThreadRef)
       ).then(

@@ -31,7 +31,10 @@ export function MemoryChangeTimelineRow({ change }: { change: MemoryChange }) {
       icon={icon}
       label={label}
       onClick={() =>
-        void navigate({ to: "/memories", search: memoryDetailSearch({ ...memory, environmentId }) })
+        void navigate({
+          to: "/settings/memories",
+          search: memoryDetailSearch({ ...memory, environmentId }),
+        })
       }
     />
   ) : (

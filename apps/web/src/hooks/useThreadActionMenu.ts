@@ -1,3 +1,4 @@
+import { isForkCoordinatorThreadId } from "@t3tools/contracts";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
@@ -133,7 +134,7 @@ export function useThreadActionMenu(input: {
         settlement: configLoaded,
         autoSettleOptOut: readEnvironmentSupportsAutoSettleOptOut(threadRef.environmentId),
         snooze: configLoaded,
-        pinning: configLoaded,
+        pinning: configLoaded && !isForkCoordinatorThreadId(thread.id),
         titleRegeneration: configLoaded,
       };
       const isRegeneratingTitle = thread.titleRegeneration != null;

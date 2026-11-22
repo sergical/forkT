@@ -1709,6 +1709,9 @@ describe("buildSidebarProjectFolders", () => {
     // The t3code project as users have it: a coordinator, delegated tasks under it,
     // settled imported history, and one ordinary thread.
     const projectId = ProjectId.make("t3code");
+    const cloneId = ProjectId.make("t3code-clone");
+    const cloneCoordinatorId = ThreadId.make("fork:project:t3code-clone:1");
+    const pinnedAt = "2026-03-09T10:06:00.000Z";
     const coordinatorId = ThreadId.make("fork:project:t3code:1");
     const delegated = (id: string, parent: ThreadId) =>
       makeThread({
@@ -1730,7 +1733,11 @@ describe("buildSidebarProjectFolders", () => {
           settledAt: "2026-03-09T10:06:00.000Z",
         }),
       ),
-      makeThread({ id: coordinatorId, projectId }),
+      makeThread({ id: coordinatorId, projectId, pinnedAt }),
+      makeThread({ id: cloneCoordinatorId, projectId: cloneId, pinnedAt }),
+      makeThread({ id: ThreadId.make("pin-first"), projectId, pinnedAt }),
+      makeThread({ id: ThreadId.make("pin-second"), projectId, pinnedAt }),
+      makeThread({ id: ThreadId.make("clone-pin"), projectId: cloneId, pinnedAt }),
       delegated("delegated", coordinatorId),
       delegated("review", ThreadId.make("delegated")),
     ];
@@ -1742,6 +1749,10 @@ describe("buildSidebarProjectFolders", () => {
         projectKey: "t3code",
         memberProjectRefs: [{ environmentId: localEnvironmentId, projectId }],
       },
+      {
+        projectKey: "t3code-clone",
+        memberProjectRefs: [{ environmentId: localEnvironmentId, projectId: cloneId }],
+      },
     ];
     const build = (collapsed: boolean) =>
       buildSidebarProjectFolders({
@@ -1749,12 +1760,15 @@ describe("buildSidebarProjectFolders", () => {
         activeThreads: visible.filter((thread) => !isSettled(thread)),
         keepEmpty: () => false,
         isCollapsed: () => collapsed,
-        routeRowThreadKey: null,
-      })[0]!;
+        routeRowThreadKey: scopedThreadKey(scopeThreadRef(localEnvironmentId, coordinatorId)),
+      });
 
-    const open = build(false);
-    expect(open.threads.map((thread) => thread.id)).toEqual([coordinatorId, "task"]);
-    expect(build(true).hiddenThreads).toHaveLength(open.threads.length);
+    expect(build(false).map(({ threads }) => threads.map(({ id }) => id))).toEqual([
+      [coordinatorId, "pin-first", "pin-second", "task"],
+      [cloneCoordinatorId, "clone-pin"],
+    ]);
+    expect(build(true).map(({ threads }) => threads)).toEqual([[], []]);
+    expect(build(true).map(({ hiddenThreads }) => hiddenThreads.length)).toEqual([4, 2]);
   });
 });
 

@@ -10,7 +10,9 @@ import {
 import {
   ArchiveIcon,
   FlaskConicalIcon,
+  BookOpenIcon,
   BotIcon,
+  ChartNoAxesColumnIcon,
   createLucideIcon,
   CalendarClockIcon,
   FileDiffIcon,
@@ -103,6 +105,8 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/snap-shot": SnapShotIcon,
   "/settings/providers": BotIcon,
   "/settings/threads": MessagesSquareIcon,
+  "/settings/memories": BookOpenIcon,
+  "/settings/usage": ChartNoAxesColumnIcon,
   "/settings/browser": GlobeIcon,
   "/settings/devices": SmartphoneIcon,
   "/settings/scheduled-tasks": CalendarClockIcon,

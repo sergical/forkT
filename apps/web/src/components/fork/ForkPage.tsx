@@ -23,7 +23,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from "../ui/select";
-import { SidebarInset } from "../ui/sidebar";
+import { ScrollArea } from "../ui/scroll-area";
 
 declare module "@tanstack/react-router" {
   interface HistoryState {
@@ -38,7 +38,7 @@ export function ForkPage() {
 
 function MemoriesPage() {
   const gt = useGT();
-  const search = useSearch({ from: "/_chat/memories" });
+  const search = useSearch({ from: "/_chat/settings/memories" });
   const navigate = useNavigate();
   const selected = memoryRefFromSearch(search);
   const [query, setQuery] = useState("");
@@ -76,20 +76,15 @@ function MemoriesPage() {
   const open = (ref: MemoryRef | null) => {
     setCreating(false);
     void navigate({
-      to: "/memories",
+      to: "/settings/memories",
       search: ref === null ? {} : memoryDetailSearch(ref),
       state: true,
     });
   };
   return (
-    <SidebarInset className="h-dvh overflow-y-auto scrollbar-gutter-both">
-      <main className="mx-auto w-full max-w-5xl space-y-10 p-6">
-        <header className="space-y-2">
-          <h1 className="text-2xl font-semibold">
-            <T>Memories</T>
-          </h1>
-        </header>
-        <section className="space-y-4" aria-label={gt("Memories")}>
+    <ScrollArea className="min-h-0 flex-1" observeContent>
+      <div className="mx-auto w-full max-w-5xl p-6">
+        <section id="memories" className="space-y-4" aria-label={gt("Memories")}>
           <div className="flex gap-2">
             <div className="flex-1">
               <Input
@@ -151,8 +146,8 @@ function MemoriesPage() {
             </div>
           </div>
         </section>
-      </main>
-    </SidebarInset>
+      </div>
+    </ScrollArea>
   );
 }
 
@@ -211,7 +206,7 @@ function EnvironmentMemories({
               return (
                 <li key={entry.id}>
                   <Link
-                    to="/memories"
+                    to="/settings/memories"
                     search={memoryDetailSearch(ref)}
                     state={true}
                     aria-current={current ? "page" : undefined}

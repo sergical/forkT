@@ -1,12 +1,7 @@
-import { createFileRoute, useLocation } from "@tanstack/react-router";
-
-import { UsagePage } from "../components/usage/UsagePage";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_chat/usage")({
-  component: UsageRoute,
+  beforeLoad: ({ location }) => {
+    throw redirect({ to: "/settings/usage", hash: location.hash, replace: true });
+  },
 });
-
-function UsageRoute() {
-  const showLimits = useLocation({ select: (location) => location.hash === "limits" });
-  return <UsagePage key={String(showLimits)} showLimitsInitially={showLimits} />;
-}
