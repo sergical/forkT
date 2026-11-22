@@ -40,12 +40,27 @@ async function watchForkPendingUpdate(
       }, onError);
     }, 150);
   };
-  NodeFS.watch(paths.stateDir, { recursive: true, signal }, (_event, name) => {
-    if (name === null || name === "pending" || name === "pending/version" || name === "installed") {
-      refresh();
+  let pendingWatcher: NodeFS.FSWatcher | undefined;
+  const watchPending = () => {
+    pendingWatcher?.close();
+    try {
+      pendingWatcher = NodeFS.watch(
+        NodePath.join(paths.stateDir, "pending"),
+        { signal },
+        (_event, name) => {
+          if (name === null || name === "version") refresh();
+        },
+      ).on("error", onError);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") onError(error);
     }
+  };
+  NodeFS.watch(paths.stateDir, { signal }, (_event, name) => {
+    if (name === null || name === "pending") watchPending();
+    if (name === null || name === "pending" || name === "installed") refresh();
   }).on("error", onError);
   signal.addEventListener("abort", () => NodeTimers.clearTimeout(debounce), { once: true });
+  watchPending();
   refresh();
 }
 
