@@ -27,9 +27,6 @@ export const forkCoordinatorProjectId = (threadId: string): string | null => {
   return match ? match[1]! : null;
 };
 
-export const isForkCoordinatorThreadId = (threadId: string) =>
-  isForkMainCoordinatorThreadId(threadId) || forkCoordinatorProjectId(threadId) !== null;
-
 export const ForkCoordinator = Schema.Struct({
   projectId: ProjectId,
   global: Schema.Boolean,

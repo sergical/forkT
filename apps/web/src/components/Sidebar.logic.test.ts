@@ -34,6 +34,8 @@ import {
   type SidebarListMarker,
   type SidebarSection,
   resolveSidebarDropVerb,
+  buildSidebarProjectFolders,
+  filterSidebarV2VisibleThreads,
   groupSidebarThreadsByProject,
   resolveSidebarFolderDot,
   sidebarFolderExpansionKeys,
@@ -1699,6 +1701,61 @@ describe("groupSidebarThreadsByProject", () => {
       { projectKey: "t3code", threads: ["a", "b"] },
       { projectKey: "fleet", threads: [] },
     ]);
+  });
+});
+
+describe("buildSidebarProjectFolders", () => {
+  it("leads with the coordinator and counts only the rows a closed folder hides", () => {
+    // The t3code project as users have it: a coordinator, delegated tasks under it,
+    // settled imported history, and one ordinary thread.
+    const projectId = ProjectId.make("t3code");
+    const coordinatorId = ThreadId.make("fork:project:t3code:1");
+    const delegated = (id: string, parent: ThreadId) =>
+      makeThread({
+        id: ThreadId.make(id),
+        projectId,
+        lineage: {
+          rootThreadId: coordinatorId,
+          parentThreadId: parent,
+          relationshipToParent: "subagent",
+        },
+      });
+    const threads = [
+      makeThread({ id: ThreadId.make("task"), projectId }),
+      ...Array.from({ length: 6 }, (_, index) =>
+        makeThread({
+          id: ThreadId.make(`import-${index}`),
+          projectId,
+          settledOverride: "settled",
+          settledAt: "2026-03-09T10:06:00.000Z",
+        }),
+      ),
+      makeThread({ id: coordinatorId, projectId }),
+      delegated("delegated", coordinatorId),
+      delegated("review", ThreadId.make("delegated")),
+    ];
+    const visible = filterSidebarV2VisibleThreads(threads, null, new Set());
+    // The Settled shelf takes these; folders get the rest.
+    const isSettled = (thread: Thread) => thread.settledOverride === "settled";
+    const groups = [
+      {
+        projectKey: "t3code",
+        memberProjectRefs: [{ environmentId: localEnvironmentId, projectId }],
+      },
+    ];
+    const build = (collapsed: boolean) =>
+      buildSidebarProjectFolders({
+        groups,
+        activeThreads: visible.filter((thread) => !isSettled(thread)),
+        keepEmpty: () => false,
+        isCollapsed: () => collapsed,
+        routeRowThreadKey: null,
+      })[0]!;
+
+    const open = build(false);
+    expect(open.threads.map((thread) => thread.id)).toEqual([coordinatorId, "task"]);
+    expect(build(true).hiddenThreads).toHaveLength(open.threads.length);
+    expect(visible.filter(isSettled)).toHaveLength(6);
   });
 });
 

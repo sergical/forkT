@@ -4,7 +4,7 @@ import { m } from "../i18n/messages";
 import { attachSidebarTree } from "../lib/sidebarTree";
 import {
   type EnvironmentId,
-  isForkCoordinatorThreadId,
+  forkCoordinatorProjectId,
   isForkMainCoordinatorThreadId,
   type ScopedProjectRef,
 } from "@t3tools/contracts";
@@ -187,7 +187,7 @@ import {
 import {
   applySidebarThreadDrop,
   filterSidebarV2VisibleThreads,
-  groupSidebarThreadsByProject,
+  buildSidebarProjectFolders,
   sidebarFolderExpansionKeys,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
@@ -235,7 +235,7 @@ import {
   snoozeWakeLabel,
   type SnoozePreset,
 } from "./Sidebar.snooze";
-import { ForkSidebarCoordinators } from "./fork/ForkSidebarCoordinators";
+import { ForkFolderCoordinatorRow, ForkSidebarCoordinators } from "./fork/ForkSidebarCoordinators";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { deriveProviderEntriesByEnvironment } from "../providerInstances";
 import { useStableCallback } from "../hooks/useStableCallback";
@@ -548,22 +548,13 @@ function useSidebarThreads(input: {
   const projectFolders =
     folderGroups === null
       ? null
-      : groupSidebarThreadsByProject(folderGroups, activeThreads, keepEmpty).map((folder) => {
-          const collapsed = !resolveProjectExpanded(
-            projectExpandedById,
-            sidebarFolderExpansionKeys(folder.group),
-          );
-          return {
-            group: folder.group,
-            collapsed,
-            // A closed folder still shows the open thread, and hints at the rest.
-            threads: collapsed
-              ? routeThreadOnly(folder.threads, routeRowThreadKey)
-              : folder.threads,
-            hiddenThreads: collapsed
-              ? folder.threads.filter((thread) => threadShellKey(thread) !== routeRowThreadKey)
-              : EMPTY_THREADS,
-          };
+      : buildSidebarProjectFolders({
+          groups: folderGroups,
+          activeThreads,
+          keepEmpty,
+          isCollapsed: (group) =>
+            !resolveProjectExpanded(projectExpandedById, sidebarFolderExpansionKeys(group)),
+          routeRowThreadKey,
         });
   const orderedThreads = [
     ...pinnedThreads,
@@ -1124,12 +1115,26 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           ),
         );
   const allThreads = useQuietThreadShells();
-  // T3 fork: coordinators sit in their own block above the list; folders keep project ones.
-  const threads = allThreads.filter((thread) =>
-    boringSidebarEnabled
-      ? !isForkMainCoordinatorThreadId(thread.id)
-      : !isForkCoordinatorThreadId(thread.id),
+  // T3 fork: the main coordinator has a fixed row above the list; project ones are list rows.
+  const threads = allThreads.filter((thread) => !isForkMainCoordinatorThreadId(thread.id));
+  const coordinatedProjectKeys = new Set(
+    allThreads
+      .filter(
+        (thread) =>
+          thread.archivedAt == null &&
+          thread.deletedAt == null &&
+          forkCoordinatorProjectId(thread.id) !== null,
+      )
+      .map((thread) => `${thread.environmentId}:${thread.projectId}`),
   );
+  // A project folder with no coordinator yet leads with a row that creates one.
+  const folderCoordinatorPlaceholder = (group: SidebarProjectSnapshot) =>
+    group.isScratch ||
+    group.memberProjectRefs.some((ref) =>
+      coordinatedProjectKeys.has(`${ref.environmentId}:${ref.projectId}`),
+    )
+      ? undefined
+      : group.memberProjectRefs[0];
   const promotingDraftThreadKeys = usePromotingDraftThreadKeys();
   const listedThreads =
     promotingDraftThreadKeys.length === 0
@@ -3311,12 +3316,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             <ForkSidebarCoordinators
               environmentId={primaryEnvironmentId}
               threads={allThreads}
-              projects={
-                boringSidebarEnabled ? [] : scopeGroups.filter((project) => !project.isScratch)
-              }
               routeRowThreadKey={routeRowThreadKey}
               onOpenThread={(threadRef) => void navigateToThread(threadRef)}
-              onShowProjectThreads={(project) => setProjectScopeKeys([project.projectKey])}
             />
           ) : null}
           {isSearchingThreads ? (
@@ -3642,6 +3643,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 onContextMenu={handleProjectFolderContextMenu}
                               />,
                             );
+                            const coordinatorProject = folder.collapsed
+                              ? undefined
+                              : folderCoordinatorPlaceholder(folder.group);
+                            if (coordinatorProject !== undefined) {
+                              items.push(
+                                <ForkFolderCoordinatorRow
+                                  key={`project-folder-coordinator:${folder.group.projectKey}`}
+                                  environmentId={coordinatorProject.environmentId}
+                                  projectId={coordinatorProject.projectId}
+                                  onOpenThread={(threadRef) => void navigateToThread(threadRef)}
+                                />,
+                              );
+                            }
                             for (const thread of folder.threads) {
                               items.push(
                                 renderThreadRow(

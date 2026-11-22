@@ -21,6 +21,7 @@ import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/sh
 import {
   type ContextMenuItem,
   type EnvironmentId,
+  forkCoordinatorProjectId,
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type ThreadId,
@@ -1072,7 +1073,8 @@ export function sidebarFolderExpansionKeys(group: {
 
 /**
  * Boring sidebar folders. Folders follow `groups` order and threads keep their
- * input order. A project with no threads gets a folder only when `keepEmpty` says so.
+ * input order, except that a T3 fork project coordinator leads its folder.
+ * A project with no threads gets a folder only when `keepEmpty` says so.
  * A thread whose project is in no group has no folder and is left out.
  */
 export function groupSidebarThreadsByProject<
@@ -1082,7 +1084,9 @@ export function groupSidebarThreadsByProject<
       readonly projectId: string;
     }>;
   },
-  TThread extends Pick<SidebarThreadSummary, "environmentId" | "projectId">,
+  TThread extends Pick<SidebarThreadSummary, "environmentId" | "projectId"> & {
+    readonly id: string;
+  },
 >(
   groups: readonly TGroup[],
   threads: readonly TThread[],
@@ -1095,10 +1099,50 @@ export function groupSidebarThreadsByProject<
       folderByProject.set(`${ref.environmentId}:${ref.projectId}`, folder);
     }
   }
-  for (const thread of threads) {
+  const place = (thread: TThread) =>
     folderByProject.get(`${thread.environmentId}:${thread.projectId}`)?.threads.push(thread);
-  }
+  for (const thread of threads) if (forkCoordinatorProjectId(thread.id) !== null) place(thread);
+  for (const thread of threads) if (forkCoordinatorProjectId(thread.id) === null) place(thread);
   return folders.filter((folder) => folder.threads.length > 0 || keepEmpty(folder.group));
+}
+
+/**
+ * Boring sidebar folders with their open state. A closed folder shows only the open
+ * thread; its header counts the rest, which are exactly the rows opening it reveals.
+ */
+export function buildSidebarProjectFolders<
+  TGroup extends {
+    readonly memberProjectRefs: ReadonlyArray<{
+      readonly environmentId: EnvironmentId;
+      readonly projectId: string;
+    }>;
+  },
+  TThread extends Pick<SidebarThreadSummary, "environmentId" | "id" | "projectId">,
+>(input: {
+  readonly groups: readonly TGroup[];
+  readonly activeThreads: readonly TThread[];
+  readonly keepEmpty: (group: TGroup) => boolean;
+  readonly isCollapsed: (group: TGroup) => boolean;
+  readonly routeRowThreadKey: string | null;
+}): Array<{
+  group: TGroup;
+  collapsed: boolean;
+  threads: readonly TThread[];
+  hiddenThreads: readonly TThread[];
+}> {
+  const isRoute = (thread: TThread) =>
+    scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === input.routeRowThreadKey;
+  return groupSidebarThreadsByProject(input.groups, input.activeThreads, input.keepEmpty).map(
+    (folder) => {
+      const collapsed = input.isCollapsed(folder.group);
+      return {
+        group: folder.group,
+        collapsed,
+        threads: collapsed ? folder.threads.filter(isRoute) : folder.threads,
+        hiddenThreads: collapsed ? folder.threads.filter((thread) => !isRoute(thread)) : [],
+      };
+    },
+  );
 }
 
 export type SidebarV2TopStatusKind =

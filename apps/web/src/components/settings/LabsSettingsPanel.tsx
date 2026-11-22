@@ -46,7 +46,12 @@ function BoringSidebarRow() {
       control={
         <Switch
           checked={settings.boringSidebarEnabled}
-          onCheckedChange={(checked) => updateSettings({ boringSidebarEnabled: Boolean(checked) })}
+          onCheckedChange={(checked) =>
+            updateSettings({
+              boringSidebarEnabled: Boolean(checked),
+              boringSidebarChosenAt: new Date().toISOString(),
+            })
+          }
           aria-label={gt("Boring sidebar (group by project)")}
         />
       }

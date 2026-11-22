@@ -135,6 +135,24 @@ describe("ClientSettings terminal close confirmation", () => {
   });
 });
 
+describe("ClientSettings folder sidebar", () => {
+  it("defaults to folders only when nothing is stored, and keeps a stored off", () => {
+    expect(decodeClientSettings({}).boringSidebarEnabled).toBe(true);
+    // Older builds wrote every default, so this may be the old default, not a choice.
+    const historicalDefault = decodeClientSettings({
+      onboardingCompletedAt: "2026-11-17T13:19:21.995Z",
+      boringSidebarEnabled: false,
+    });
+    const chosenOff = decodeClientSettings({
+      boringSidebarEnabled: false,
+      boringSidebarChosenAt: "2026-11-22T12:00:00.000Z",
+    });
+    expect(historicalDefault.boringSidebarEnabled).toBe(false);
+    expect(chosenOff.boringSidebarEnabled).toBe(false);
+    expect(decodeClientSettings(encodeClientSettings(chosenOff))).toEqual(chosenOff);
+  });
+});
+
 describe("ServerSettings usage price overrides", () => {
   const prices = { inputCostPerMillionTokens: 2, outputCostPerMillionTokens: 8 };
 
