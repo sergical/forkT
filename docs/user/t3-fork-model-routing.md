@@ -1,6 +1,6 @@
 # T3 fork: pick models by subscription usage left
 
-Research and design only. Nothing here is built. Written 2026-11-21. "Usage low" below means *little used, lots left*; say if you meant the opposite.
+Research and design only. Nothing here is built. Written 2026-11-21. "Usage low" means *little left*. The user's rule: when the coordinator is Opus 5.5 and little Claude Code usage is left, it hands coordination to Fable 5.2, or to Codex when the work needs no creativity.
 
 ## 1. What T3 already knows about usage
 
@@ -52,12 +52,12 @@ Per provider, take the tightest window that applies to the model (session, weekl
 
 | Task | Needs creativity / vague spec | Concrete spec, no creativity |
 | --- | --- | --- |
-| Coordinate, plan | Claude PLENTY: Fable 5.2, high. Claude NORMAL: Opus 5.5, high. Claude TIGHT/OUT and Codex not OUT: Sol 6.2, high | Same, but Claude TIGHT is enough to move to Sol 6.2, high |
+| Coordinate, plan | Claude PLENTY/NORMAL: Opus 5.5, high. Claude TIGHT: Fable 5.2, high (if Fable's own window has 30%+ left, else Sol 6.2, high). Claude OUT: Sol 6.2, high | Claude PLENTY/NORMAL: Opus 5.5, high. Claude TIGHT or OUT: Sol 6.2, high (Codex not OUT) |
 | Implement | Claude: Opus 5.5 high (Fable xhigh only if PLENTY and hard). Claude OUT: Sol 6.2, with exact steps in the brief | Codex first: Sol 6.2, medium. Codex TIGHT/OUT: Sonnet 5.5 medium, or Haiku 5.5 for trivial edits. Terra 6.1 for trivial edits when Codex is NORMAL |
 | Review | Other provider than the implementer: Claude impl, then Astra 6.2 high; Codex impl, then Opus 5.5 high. Cap at 3 rounds | Same |
 | Research | Opus 5.5 medium (Fable if PLENTY) | Sol 6.2 medium; Haiku 5.5 or Terra 6.1 for lookups |
 
-Rules on top: never default to `max` effort; step effort down one level when the provider is TIGHT. Fable costs double against the weekly limit, so skip it when its own 7-day window has under 30% left.
+Rules on top: never default to `max` effort; step effort down one level when the provider is TIGHT. Fable at High matches Opus at Max for about half the cost ([announcement](https://www.anthropic.com/claude-fable-and-mythos-5-2)), which is why it takes over coordination when Claude is TIGHT. It still counts half a point against the weekly limit per point of its own window ([Theo 23:23](https://www.youtube.com/watch?v=yh5IAUow4Hc&t=1403)), so skip it when its own 7-day window has under 30% left. Because the coordinator does not switch its own model mid-thread (decision 2), "hand off coordination" means it delegates the remaining coordination to a new child thread on the chosen model.
 
 ## 4. Where it plugs in
 
@@ -67,8 +67,10 @@ Rules on top: never default to `max` effort; step effort down one level when the
 4. **Coordinator's own model.** Chosen once at creation: given model, then project default, then previous, then the first provider ([ForkCoordinatorService.ts:88-101](../../apps/server/src/project/ForkCoordinatorService.ts#L88-L101)). A new thread already falls back at 100% via `fallbackModelSelection` ([settings.ts:1443](../../packages/contracts/src/settings.ts#L1443)). Add the rule function there; the coordinator's standing instructions ([forkCoordinatorInstructions.ts](../../apps/server/src/project/forkCoordinatorInstructions.ts)) tell it to follow the suggestion.
 5. **Override.** An explicit `target.model`, `providerInstanceId` or `options` always wins ([contract](../../packages/contracts/src/orchestratorMcp.ts#L98-L129)) and so does any model you name in chat. A fork setting `routing: off | advise` keeps today's behavior.
 
-## Decisions for you
+## Decisions (made 2026-11-21)
 
-1. **Advise or auto-apply?** Pick **advise**: the coordinator sees usage and a suggested model, and chooses visibly. Auto-applying inside `delegate_task` is the router Theo warns about, and it hides why a model was chosen.
-2. **May the coordinator switch its own model mid-thread?** Pick **no**: re-pick only when a coordinator is created, and mid-thread the coordinator asks you. A switch drops context continuity, and Theo seldom changes defaults.
-3. **Are the thresholds and table right?** Pick **keep the numbers above as code defaults**, with no settings screen yet. Tell me if "usage low" meant the opposite, since that flips the Fable rule.
+The user works hands-off and each choice is easy to undo, so these are decided:
+
+1. **Advise, not auto-apply.** The coordinator sees usage and a suggested model, and chooses visibly. Auto-applying inside `delegate_task` is the router Theo warns about, and it hides why a model was chosen.
+2. **No model switch mid-thread.** A coordinator's own model is picked only at creation. Mid-thread, it hands work off by delegating instead of switching, which keeps its context intact.
+3. **Defaults live in code.** The thresholds and the table above are code defaults, with no settings screen yet.
