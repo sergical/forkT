@@ -2,6 +2,8 @@ import {
   ForkMemory,
   ForkMemoryError,
   ForkMemoryForgetInput,
+  ForkMemoryIndexEntry,
+  ForkMemoryIndexInput,
   ForkMemoryKey,
   ForkMemorySaveInput,
   ForkMemorySearchInput,
@@ -25,6 +27,10 @@ export class ForkMemoryService extends Context.Service<
     readonly search: (
       input: ForkMemorySearchInput,
     ) => Effect.Effect<ReadonlyArray<ForkMemorySummary>, ForkMemoryError>;
+    /** Titles across personal memory and every live project, personal first, then by project. */
+    readonly index: (
+      input: ForkMemoryIndexInput,
+    ) => Effect.Effect<ReadonlyArray<ForkMemoryIndexEntry>, ForkMemoryError>;
     readonly history: (
       input: ForkMemoryKey,
     ) => Effect.Effect<ReadonlyArray<ForkMemory>, ForkMemoryError>;
@@ -133,6 +139,50 @@ const make = Effect.gen(function* () {
       }),
     );
   });
+
+  const index = Effect.fn("ForkMemoryService.index")(function* (input: ForkMemoryIndexInput) {
+    const terms = input.query.match(/[\p{L}\p{N}_]+/gu)?.slice(0, 12) ?? [];
+    if (input.query.trim() !== "" && terms.length === 0) return [];
+    // Prefix terms, all required: the palette searches as the user types.
+    const match = terms.map((term) => `"${term}"*`).join(" AND ");
+    // A deleted project's memories stay hidden, as `checkProject` hides them per scope.
+    const rows = yield* (
+      match === ""
+        ? sql`
+          SELECT m.payload_json AS payload, m.revision FROM fork_memories m
+          LEFT JOIN projection_projects p ON p.project_id = substr(m.scope, 9)
+          WHERE m.payload_json IS NOT NULL
+            AND (m.scope = 'personal' OR (p.project_id IS NOT NULL AND p.deleted_at IS NULL))
+          ORDER BY m.scope <> 'personal', m.scope,
+            json_extract(m.payload_json, '$.updatedAt') DESC, m.memory_id
+          LIMIT 500
+        `
+        : sql`
+          SELECT m.payload_json AS payload, m.revision FROM fork_memory_search s
+          JOIN fork_memories m ON m.scope = s.scope AND m.memory_id = s.memory_id
+          LEFT JOIN projection_projects p ON p.project_id = substr(m.scope, 9)
+          WHERE fork_memory_search MATCH ${match} AND m.payload_json IS NOT NULL
+            AND (m.scope = 'personal' OR (p.project_id IS NOT NULL AND p.deleted_at IS NULL))
+          ORDER BY m.scope <> 'personal', m.scope,
+            bm25(fork_memory_search, 0, 0, 10.0, 1.0), m.memory_id
+          LIMIT 50
+        `
+    ).pipe(Effect.flatMap(decodeRows));
+    return rows.flatMap((row) =>
+      row.payload === null
+        ? []
+        : [
+            {
+              projectId: row.payload.projectId,
+              id: row.payload.id,
+              kind: row.payload.kind,
+              title: row.payload.title,
+              revision: row.payload.revision,
+              updatedAt: row.payload.updatedAt,
+            },
+          ],
+    );
+  }, Effect.mapError(storageError));
 
   const history = Effect.fn("ForkMemoryService.history")(function* (input: ForkMemoryKey) {
     yield* checkProject(input.projectId);
@@ -300,7 +350,7 @@ const make = Effect.gen(function* () {
     );
   }, Effect.mapError(storageError));
 
-  return ForkMemoryService.of({ get, search, history, save, forget, brief });
+  return ForkMemoryService.of({ get, search, index, history, save, forget, brief });
 });
 
 export const layer = Layer.effect(ForkMemoryService, make);

@@ -1,5 +1,5 @@
 import {
-  GitForkIcon,
+  BookMarkedIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
   ChartNoAxesColumnIcon,
@@ -289,12 +289,11 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
       ) : (
         <>
           <SidebarUtilityItem
-            icon={<GitForkIcon />}
-            // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
-            label="T3 fork"
+            icon={<BookMarkedIcon />}
+            label={gt("Memories")}
             onClick={() => {
               closeMobileSidebar();
-              void navigate({ to: "/fork" });
+              void navigate({ to: "/memories", search: {} });
             }}
           />
           <SidebarUtilityItem

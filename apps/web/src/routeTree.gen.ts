@@ -22,6 +22,7 @@ import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
 import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
+import { Route as ChatMemoriesRouteImport } from './routes/_chat.memories'
 import { Route as ChatIssuesRouteImport } from './routes/_chat.issues'
 import { Route as ChatForkRouteImport } from './routes/_chat.fork'
 import { Route as ThreadsEnvironmentIdThreadIdRouteImport } from './routes/threads.$environmentId.$threadId'
@@ -118,6 +119,11 @@ const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
 const ChatNewRoute = ChatNewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatMemoriesRoute = ChatMemoriesRouteImport.update({
+  id: '/memories',
+  path: '/memories',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatIssuesRoute = ChatIssuesRouteImport.update({
@@ -305,6 +311,7 @@ export interface FileRoutesByFullPath {
   '/welcome': typeof WelcomeRoute
   '/fork': typeof ChatForkRoute
   '/issues': typeof ChatIssuesRoute
+  '/memories': typeof ChatMemoriesRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
@@ -351,6 +358,7 @@ export interface FileRoutesByTo {
   '/welcome': typeof WelcomeRoute
   '/fork': typeof ChatForkRoute
   '/issues': typeof ChatIssuesRoute
+  '/memories': typeof ChatMemoriesRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
@@ -400,6 +408,7 @@ export interface FileRoutesById {
   '/welcome': typeof WelcomeRoute
   '/_chat/fork': typeof ChatForkRoute
   '/_chat/issues': typeof ChatIssuesRoute
+  '/_chat/memories': typeof ChatMemoriesRoute
   '/_chat/new': typeof ChatNewRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/_chat/settings': typeof ChatSettingsRouteWithChildren
@@ -450,6 +459,7 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/fork'
     | '/issues'
+    | '/memories'
     | '/new'
     | '/pull-requests'
     | '/settings'
@@ -496,6 +506,7 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/fork'
     | '/issues'
+    | '/memories'
     | '/new'
     | '/pull-requests'
     | '/settings'
@@ -544,6 +555,7 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/_chat/fork'
     | '/_chat/issues'
+    | '/_chat/memories'
     | '/_chat/new'
     | '/_chat/pull-requests'
     | '/_chat/settings'
@@ -686,6 +698,13 @@ declare module '@tanstack/react-router' {
       path: '/new'
       fullPath: '/new'
       preLoaderRoute: typeof ChatNewRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/memories': {
+      id: '/_chat/memories'
+      path: '/memories'
+      fullPath: '/memories'
+      preLoaderRoute: typeof ChatMemoriesRouteImport
       parentRoute: typeof ChatRoute
     }
     '/_chat/issues': {
@@ -989,6 +1008,7 @@ const ChatSettingsRouteWithChildren = ChatSettingsRoute._addFileChildren(
 interface ChatRouteChildren {
   ChatForkRoute: typeof ChatForkRoute
   ChatIssuesRoute: typeof ChatIssuesRoute
+  ChatMemoriesRoute: typeof ChatMemoriesRoute
   ChatNewRoute: typeof ChatNewRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatSettingsRoute: typeof ChatSettingsRouteWithChildren
@@ -1002,6 +1022,7 @@ interface ChatRouteChildren {
 const ChatRouteChildren: ChatRouteChildren = {
   ChatForkRoute: ChatForkRoute,
   ChatIssuesRoute: ChatIssuesRoute,
+  ChatMemoriesRoute: ChatMemoriesRoute,
   ChatNewRoute: ChatNewRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatSettingsRoute: ChatSettingsRouteWithChildren,

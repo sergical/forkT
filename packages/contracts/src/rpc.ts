@@ -237,6 +237,8 @@ import {
   ForkMemory,
   ForkMemoryError,
   ForkMemoryForgetInput,
+  ForkMemoryIndexEntry,
+  ForkMemoryIndexInput,
   ForkMemoryKey,
   ForkMemorySaveInput,
   ForkMemorySearchInput,
@@ -663,6 +665,7 @@ export const WS_METHODS = {
   forkCoordinatorOpen: "forkCoordinator.open",
   forkMemoryGet: "forkMemory.get",
   forkMemorySearch: "forkMemory.search",
+  forkMemoryIndex: "forkMemory.index",
   forkMemoryHistory: "forkMemory.history",
   forkMemorySave: "forkMemory.save",
   forkMemoryForget: "forkMemory.forget",
@@ -2426,6 +2429,11 @@ export const WsRpcGroup = RpcGroup.make(
   Rpc.make(WS_METHODS.forkMemorySearch, {
     payload: ForkMemorySearchInput,
     success: Schema.Array(ForkMemorySummary),
+    error: ForkMemoryError,
+  }),
+  Rpc.make(WS_METHODS.forkMemoryIndex, {
+    payload: ForkMemoryIndexInput,
+    success: Schema.Array(ForkMemoryIndexEntry),
     error: ForkMemoryError,
   }),
   Rpc.make(WS_METHODS.forkMemoryHistory, {

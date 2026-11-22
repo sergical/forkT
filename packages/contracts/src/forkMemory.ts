@@ -74,6 +74,21 @@ export const ForkMemorySearchInput = Schema.Struct({
 });
 export type ForkMemorySearchInput = typeof ForkMemorySearchInput.Type;
 
+/** Every scope in one environment; an empty query lists them all. */
+export const ForkMemoryIndexInput = Schema.Struct({
+  query: Schema.String.check(Schema.isMaxLength(500)),
+});
+export type ForkMemoryIndexInput = typeof ForkMemoryIndexInput.Type;
+
+export const ForkMemoryIndexEntry = Schema.Struct({
+  ...ForkMemoryKey.fields,
+  kind: ForkMemory.fields.kind,
+  title: MemoryTitle,
+  revision: PositiveInt,
+  updatedAt: IsoDateTime,
+});
+export type ForkMemoryIndexEntry = typeof ForkMemoryIndexEntry.Type;
+
 export class ForkMemoryError extends Schema.TaggedError<ForkMemoryError>()("ForkMemoryError", {
   reason: Schema.Literals([
     "storage",

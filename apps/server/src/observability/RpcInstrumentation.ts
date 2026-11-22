@@ -134,6 +134,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.forkCoordinatorOpen]: "orchestration",
   [WS_METHODS.forkMemoryGet]: "memory",
   [WS_METHODS.forkMemorySearch]: "memory",
+  [WS_METHODS.forkMemoryIndex]: "memory",
   [WS_METHODS.forkMemoryHistory]: "memory",
   [WS_METHODS.forkMemorySave]: "memory",
   [WS_METHODS.forkMemoryForget]: "memory",

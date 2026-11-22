@@ -174,8 +174,11 @@ function UsageModelDialogHost({
   );
 }
 
-export function UsagePage() {
-  const [preferences, setPreferences] = useState(readUsagePagePreferences);
+export function UsagePage({ showLimitsInitially = false }: { showLimitsInitially?: boolean } = {}) {
+  const [preferences, setPreferences] = useState(() => {
+    const saved = readUsagePagePreferences();
+    return showLimitsInitially ? { ...saved, metric: "limits" as const } : saved;
+  });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const hour12 = usePrimarySettings((settings) => resolveHour12(settings.timestampFormat));
   const gt = useGT();

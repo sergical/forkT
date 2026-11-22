@@ -1,13 +1,23 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { randomUUID } from "../../lib/utils";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router";
+import { T, useGT } from "gt-react";
 import { useState } from "react";
 import { CommandId, type EnvironmentId, type ForkMemory, type ProjectId } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { forkMemory } from "../../state/forkMemory";
-import { pendingForkThreads } from "./forkInbox";
-import { useProjects, useVisibleThreadShells } from "../../state/entities";
+import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
+import { useDebouncedValue } from "../../state/queries";
+import { useEnvironments } from "../../state/environments";
+import { useEnvironmentLookups } from "../CommandPaletteLookups";
+import {
+  groupMemoryEntries,
+  memoryDetailSearch,
+  memoryRefFromSearch,
+  memoryRefKey,
+  type MemoryRef,
+} from "./memories.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -15,275 +25,265 @@ import { Textarea } from "../ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from "../ui/select";
 import { SidebarInset } from "../ui/sidebar";
 
+declare module "@tanstack/react-router" {
+  interface HistoryState {
+    memoriesReset?: number;
+  }
+}
+
 export function ForkPage() {
-  const projects = useProjects().filter((project) => project.archivedAt == null);
-  const [scopeKey, setScopeKey] = useState("");
-  const environments = [...new Set(projects.map((project) => project.environmentId))];
-  const scopes = [
-    ...projects.map((project) => ({
-      key: `${project.environmentId}/${project.id}`,
-      environmentId: project.environmentId,
-      projectId: project.id,
-      title: project.title,
-    })),
-    ...environments.map((environmentId) => ({
-      key: `${environmentId}/personal`,
-      environmentId,
-      projectId: null,
-      title: "Personal preferences",
-    })),
-  ];
-  const selected = scopes.find((scope) => scope.key === scopeKey) ?? scopes[0];
+  const reset = useLocation({ select: (location) => location.state.memoriesReset });
+  return <MemoriesPage key={reset ?? 0} />;
+}
+
+function MemoriesPage() {
+  const gt = useGT();
+  const search = useSearch({ from: "/_chat/memories" });
+  const navigate = useNavigate();
+  const selected = memoryRefFromSearch(search);
+  const [query, setQuery] = useState("");
+  const settledQuery = useDebouncedValue(query.trim(), 200);
+  const [creating, setCreating] = useState(false);
+  const { environments } = useEnvironments();
+  const { projectEnvironmentLocationById } = useEnvironmentLookups();
+  const projects = useProjects();
+  const several = environments.length > 1;
+  const environmentLabel = (environmentId: EnvironmentId) =>
+    several ? (projectEnvironmentLocationById.get(environmentId)?.label ?? null) : null;
+  const scopeLabel = (ref: Pick<MemoryRef, "environmentId" | "projectId">) => {
+    const scope =
+      ref.projectId === null
+        ? "Personal"
+        : (projects.find(
+            (project) =>
+              project.environmentId === ref.environmentId && project.id === ref.projectId,
+          )?.title ?? "Unknown project");
+    const location = environmentLabel(ref.environmentId);
+    return location === null ? scope : `${scope} · ${location}`;
+  };
+  const connected = environments.filter(
+    (environment) => environment.connection.phase === "connected",
+  );
+  const targets = connected.flatMap((environment) => [
+    { environmentId: environment.environmentId, projectId: null },
+    ...projects
+      .filter(
+        (project) =>
+          project.environmentId === environment.environmentId && project.archivedAt == null,
+      )
+      .map((project) => ({ environmentId: environment.environmentId, projectId: project.id })),
+  ]);
+  const open = (ref: MemoryRef | null) => {
+    setCreating(false);
+    void navigate({
+      to: "/memories",
+      search: ref === null ? {} : memoryDetailSearch(ref),
+      state: true,
+    });
+  };
   return (
     <SidebarInset className="h-dvh overflow-y-auto scrollbar-gutter-both">
-      <main className="mx-auto w-full max-w-5xl space-y-8 p-6">
+      <main className="mx-auto w-full max-w-5xl space-y-10 p-6">
         <header className="space-y-2">
-          <h1 className="text-2xl font-semibold">T3 fork</h1>
-          <p className="text-muted-foreground">
-            A place for project decisions, preferences, and lessons that carry into the next task.
-          </p>
+          <h1 className="text-2xl font-semibold">
+            <T>Memories</T>
+          </h1>
         </header>
-        {selected ? (
-          <>
-            <div className="max-w-sm">
-              <label className="mb-2 block text-sm font-medium" htmlFor="fork-scope">
-                Memory scope
-              </label>
-              <Select
-                value={selected.key}
-                onValueChange={(value) => {
-                  if (value) setScopeKey(value);
-                }}
-              >
-                <SelectTrigger id="fork-scope">
-                  <SelectValue>{selected.title}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  {scopes.map((scope) => (
-                    <SelectItem key={scope.key} value={scope.key}>
-                      {scope.title}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-            </div>
-            {selected.projectId ? (
-              <CoordinatorControls
-                key={`coordinator:${selected.key}`}
-                environmentId={selected.environmentId}
-                projectId={selected.projectId}
+        <section className="space-y-4" aria-label={gt("Memories")}>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Input
+                type="search"
+                aria-label={gt("Search memories")}
+                placeholder={gt("Search memories")}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                maxLength={500}
               />
-            ) : null}
-            <ForkInbox environmentId={selected.environmentId} projectId={selected.projectId} />
-            <MemoryPanel
-              key={selected.key}
-              environmentId={selected.environmentId}
-              projectId={selected.projectId}
-            />
-          </>
-        ) : (
-          <p>Add a project to start saving memory.</p>
-        )}
+            </div>
+            <Button disabled={targets.length === 0} onClick={() => setCreating(true)}>
+              <T>Remember something</T>
+            </Button>
+          </div>
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-6">
+              {environments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  <T>Connect an environment to see its memories.</T>
+                </p>
+              ) : null}
+              {environments.map((environment) => (
+                <EnvironmentMemories
+                  key={environment.environmentId}
+                  environmentId={environment.environmentId}
+                  label={environmentLabel(environment.environmentId)}
+                  connected={environment.connection.phase === "connected"}
+                  query={settledQuery}
+                  selected={selected}
+                />
+              ))}
+            </div>
+            <div>
+              {creating ? (
+                <NewMemory
+                  targets={targets}
+                  scopeLabel={scopeLabel}
+                  onSaved={open}
+                  onClose={() => setCreating(false)}
+                />
+              ) : selected ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">{scopeLabel(selected)}</p>
+                  <MemorySelection
+                    key={memoryRefKey(selected)}
+                    environmentId={selected.environmentId}
+                    projectId={selected.projectId}
+                    memoryId={selected.id}
+                    onSaved={(saved) => open(saved === null ? null : selected)}
+                    onClose={() => open(null)}
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  <T>Select a memory.</T>
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
       </main>
     </SidebarInset>
   );
 }
 
-function CoordinatorControls({
+function EnvironmentMemories({
   environmentId,
-  projectId,
+  label,
+  connected,
+  query,
+  selected,
 }: {
   environmentId: EnvironmentId;
-  projectId: ProjectId;
+  label: string | null;
+  connected: boolean;
+  query: string;
+  selected: MemoryRef | null;
 }) {
-  const dream = useAtomCommand(forkMemory.startDream, { label: "start Dream review" });
-  const canDream = useAtomValue(forkMemory.startDream.permissionAtom(environmentId));
-  const open = useAtomCommand(forkMemory.openCoordinator, { label: "open coordinator" });
-  const allowed = useAtomValue(forkMemory.openCoordinator.permissionAtom(environmentId));
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const enter = async (global: boolean) => {
-    if (busy || !allowed) return;
-    setBusy(true);
-    setError(null);
-    const result = await open({ environmentId, input: { projectId, global } });
-    setBusy(false);
-    if (result._tag === "Success")
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: { environmentId, threadId: result.value.threadId },
-      });
-    else setError(String(squashAtomCommandFailure(result)));
-  };
-  const startDream = async () => {
-    if (busy || !canDream) return;
-    setBusy(true);
-    setError(null);
-    const result = await dream({
-      environmentId,
-      input: { projectId, commandId: CommandId.make(randomUUID()) },
-    });
-    setBusy(false);
-    if (result._tag === "Success")
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: { environmentId, threadId: result.value.threadId },
-      });
-    else setError(String(squashAtomCommandFailure(result)));
-  };
-  return (
-    <section className="space-y-3 rounded-xl border p-5" aria-label="Coordinators">
-      <h2 className="text-lg font-medium">One conversation to return to</h2>
-      <p className="text-sm text-muted-foreground">
-        Your project coordinator keeps the conversation and delegates work into task threads. The
-        main coordinator handles work across projects.
-      </p>
-      <div className="flex flex-wrap gap-3">
-        <Button disabled={!allowed || busy} onClick={() => void enter(false)}>
-          Open project coordinator
-        </Button>
-        <Button variant="outline" disabled={!allowed || busy} onClick={() => void enter(true)}>
-          Open main coordinator
-        </Button>
-        <Button variant="outline" disabled={busy || !canDream} onClick={() => void startDream()}>
-          Dream about this project
-        </Button>
-      </div>
-      {error ? <p role="alert">{error}</p> : null}
-    </section>
-  );
-}
-
-function ForkInbox({
-  environmentId,
-  projectId,
-}: {
-  environmentId: EnvironmentId;
-  projectId: ProjectId | null;
-}) {
-  const pending = pendingForkThreads(useVisibleThreadShells(), environmentId, projectId);
-
-  return (
-    <section className="space-y-3" aria-label="Inbox">
-      <h2 className="text-lg font-medium">
-        Inbox <span className="text-muted-foreground">{pending.length}</span>
-      </h2>
-      {pending.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No questions or approvals need your attention.
-        </p>
-      ) : (
-        <ul className="divide-y rounded-xl border">
-          {pending.map(({ thread, reason }) => (
-            <li key={thread.id} className="flex items-center justify-between gap-3 p-3">
-              <Link
-                to="/$environmentId/$threadId"
-                params={{ environmentId, threadId: thread.id }}
-                className="font-medium hover:underline"
-              >
-                {thread.title}
-              </Link>
-              <span className="text-sm text-muted-foreground">{reason}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function MemoryPanel({
-  environmentId,
-  projectId,
-}: {
-  environmentId: EnvironmentId;
-  projectId: ProjectId | null;
-}) {
-  const [query, setQuery] = useState("");
-  const [search, setSearch] = useState("");
-  const [editing, setEditing] = useState<string | null>(null);
+  const projects = useProjects().filter((project) => project.environmentId === environmentId);
   const entries = useEnvironmentQuery(
-    forkMemory.search({ environmentId, input: { projectId, query: search } }),
+    connected ? forkMemory.index({ environmentId, input: { query } }) : null,
   );
-  const canSave = useAtomValue(forkMemory.save.permissionAtom(environmentId));
-  return (
-    <section className="space-y-4" aria-label="Memory">
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className="flex-1 text-lg font-medium">Memory</h2>
-        <Button variant="outline" onClick={entries.refresh}>
-          Refresh
-        </Button>
-        <Button disabled={!canSave} onClick={() => setEditing("new")}>
-          Remember something
-        </Button>
-      </div>
-      <form
-        className="flex gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setSearch(query);
-        }}
-      >
-        <div className="flex-1">
-          <Input
-            aria-label="Search memory"
-            placeholder="Search decisions and lessons"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            maxLength={500}
-          />
-        </div>
-        <Button type="submit" variant="outline">
-          Search
-        </Button>
-      </form>
-      {entries.error ? <p role="alert">{entries.error}</p> : null}
-      {entries.isPending ? <p className="text-sm text-muted-foreground">Loading memory…</p> : null}
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="space-y-3">
-          {entries.data?.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No memories found. Save a decision or a preference to use in later tasks.
-            </p>
-          ) : null}
-          {entries.data?.map((entry) => (
-            <article key={entry.id} className="rounded-xl border p-4">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-xs text-muted-foreground">
-                  {entry.kind} · revision {entry.revision}
-                </span>
-                <Button size="sm" variant="ghost" onClick={() => setEditing(entry.id)}>
-                  Read / edit
-                </Button>
-              </div>
-              <h3 className="font-medium">{entry.title}</h3>
-              <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">
-                {entry.excerpt}
-              </p>
-            </article>
-          ))}
-        </div>
-        {editing ? (
-          <MemorySelection
-            key={editing}
-            environmentId={environmentId}
-            projectId={projectId}
-            memoryId={editing}
-            onSaved={() => {
-              entries.refresh();
-              setEditing(null);
-            }}
-            onClose={() => setEditing(null)}
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Select a memory to read its sources and revision history. Relevant notes are included in
-            agent turns within this project.
+  const groups = groupMemoryEntries(entries.data ?? [], projects);
+  const body = !connected ? (
+    <p className="text-sm text-muted-foreground">
+      Unavailable while {label ?? "this environment"} is disconnected.
+    </p>
+  ) : entries.error ? (
+    <p role="alert" className="text-sm">
+      {entries.error}
+    </p>
+  ) : entries.data === null ? (
+    <p className="text-sm text-muted-foreground">Loading memories…</p>
+  ) : groups.length === 0 ? (
+    <p className="text-sm text-muted-foreground">
+      {query === ""
+        ? "No memories yet. Agents save preferences and decisions here as you work."
+        : "No memories match your search."}
+    </p>
+  ) : (
+    groups.map((group) => (
+      <section key={group.key} className="space-y-1" aria-label={group.title ?? "Personal"}>
+        <h3 className="px-2 text-xs font-medium text-muted-foreground">
+          {group.projectId === null ? "Personal" : (group.title ?? "Unknown project")}
+          {group.unavailable === "archived" ? " · Archived" : null}
+        </h3>
+        {group.unavailable !== null ? (
+          <p className="px-2 text-sm text-muted-foreground">
+            {group.unavailable === "archived"
+              ? "Unavailable while the project is archived."
+              : "Unavailable: this project is not loaded here."}
           </p>
+        ) : (
+          <ul>
+            {group.entries.map((entry) => {
+              const ref = { environmentId, projectId: entry.projectId, id: entry.id };
+              const current = selected !== null && memoryRefKey(selected) === memoryRefKey(ref);
+              return (
+                <li key={entry.id}>
+                  <Link
+                    to="/memories"
+                    search={memoryDetailSearch(ref)}
+                    state={true}
+                    aria-current={current ? "page" : undefined}
+                    className="block truncate rounded-md px-2 py-1.5 text-sm hover:bg-accent aria-[current=page]:bg-accent aria-[current=page]:font-medium"
+                  >
+                    {entry.title}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         )}
+      </section>
+    ))
+  );
+  return (
+    <div className="space-y-4">
+      {label === null ? null : <h2 className="text-sm font-medium">{label}</h2>}
+      {body}
+    </div>
+  );
+}
+
+function NewMemory({
+  targets,
+  scopeLabel,
+  onSaved,
+  onClose,
+}: {
+  targets: ReadonlyArray<{ environmentId: EnvironmentId; projectId: ProjectId | null }>;
+  scopeLabel: (ref: Pick<MemoryRef, "environmentId" | "projectId">) => string;
+  onSaved: (ref: MemoryRef) => void;
+  onClose: () => void;
+}) {
+  const keyOf = (target: (typeof targets)[number]) =>
+    `${target.environmentId}/${target.projectId ?? "personal"}`;
+  const [targetKey, setTargetKey] = useState(() => (targets[0] ? keyOf(targets[0]) : ""));
+  const target = targets.find((candidate) => keyOf(candidate) === targetKey) ?? targets[0];
+  if (!target) return null;
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2 text-sm">
+        <label htmlFor="memory-scope">Save to</label>
+        <Select
+          value={keyOf(target)}
+          onValueChange={(value) => {
+            if (value) setTargetKey(value);
+          }}
+        >
+          <SelectTrigger id="memory-scope">
+            <SelectValue>{scopeLabel(target)}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            {targets.map((candidate) => (
+              <SelectItem key={keyOf(candidate)} value={keyOf(candidate)}>
+                {scopeLabel(candidate)}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
       </div>
-    </section>
+      <MemoryEditor
+        key={keyOf(target)}
+        environmentId={target.environmentId}
+        projectId={target.projectId}
+        memory={null}
+        onSaved={(saved) => {
+          if (saved !== null) onSaved({ ...target, id: saved.id });
+        }}
+        onClose={onClose}
+      />
+    </div>
   );
 }
 
@@ -297,24 +297,38 @@ function MemorySelection({
   environmentId: EnvironmentId;
   projectId: ProjectId | null;
   memoryId: string;
-  onSaved: () => void;
+  onSaved: (saved: ForkMemory | null) => void;
   onClose: () => void;
 }) {
+  const { environments } = useEnvironments();
+  const projects = useProjects();
+  const available =
+    environments.some(
+      (environment) =>
+        environment.environmentId === environmentId && environment.connection.phase === "connected",
+    ) &&
+    (projectId === null ||
+      projects.some(
+        (project) =>
+          project.environmentId === environmentId &&
+          project.id === projectId &&
+          project.archivedAt == null,
+      ));
   const query = useEnvironmentQuery(
-    memoryId === "new"
-      ? null
-      : forkMemory.get({ environmentId, input: { projectId, id: memoryId } }),
+    available ? forkMemory.get({ environmentId, input: { projectId, id: memoryId } }) : null,
   );
-  if (memoryId !== "new" && !query.data)
+  if (!query.data)
     return (
-      <p role={query.error ? "alert" : "status"}>
+      <p role={query.error ? "alert" : "status"} className="text-sm">
         {query.error ??
-          (query.isPending ? "Loading memory…" : "This memory is no longer available.")}
+          (available && query.isPending
+            ? "Loading memory…"
+            : "This memory was removed or is not available.")}
       </p>
     );
   return (
     <MemoryEditor
-      key={query.data?.revision ?? "new"}
+      key={query.data.revision}
       environmentId={environmentId}
       projectId={projectId}
       memory={query.data}
@@ -334,7 +348,7 @@ function MemoryEditor({
   environmentId: EnvironmentId;
   projectId: ProjectId | null;
   memory: ForkMemory | null;
-  onSaved: () => void;
+  onSaved: (saved: ForkMemory | null) => void;
   onClose: () => void;
 }) {
   const [id] = useState(() => memory?.id ?? randomUUID());
@@ -349,6 +363,7 @@ function MemoryEditor({
   const canForget = useAtomValue(forkMemory.forget.permissionAtom(environmentId));
   const save = useAtomCommand(forkMemory.save, { label: "save memory" });
   const forget = useAtomCommand(forkMemory.forget, { label: "forget memory" });
+  const changed = useAtomSet(forkMemory.changes(environmentId));
   const history = useEnvironmentQuery(
     memory ? forkMemory.history({ environmentId, input: { projectId, id } }) : null,
   );
@@ -371,8 +386,10 @@ function MemoryEditor({
       },
     });
     setBusy(false);
-    if (result._tag === "Success") onSaved();
-    else setError(String(squashAtomCommandFailure(result)));
+    if (result._tag === "Success") {
+      changed((count) => count + 1);
+      onSaved(result.value);
+    } else setError(String(squashAtomCommandFailure(result)));
   };
   const remove = async () => {
     if (busy || !memory || !canForget) return;
@@ -382,8 +399,10 @@ function MemoryEditor({
       input: { projectId, id, expectedRevision: memory.revision },
     });
     setBusy(false);
-    if (result._tag === "Success") onSaved();
-    else setError(String(squashAtomCommandFailure(result)));
+    if (result._tag === "Success") {
+      changed((count) => count + 1);
+      onSaved(null);
+    } else setError(String(squashAtomCommandFailure(result)));
   };
   return (
     <div className="space-y-4 rounded-xl border p-4">

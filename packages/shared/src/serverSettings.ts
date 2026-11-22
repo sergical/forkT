@@ -391,6 +391,7 @@ export function applyServerSettingsPatch(
   const selectionPatch = patch.textGenerationModelSelection;
   const {
     migrateModelPreferences,
+    forkCoordinatorAccountAccess,
     setModelFavorites,
     setModelsHidden,
     setProviderModelOrder,
@@ -502,8 +503,23 @@ export function applyServerSettingsPatch(
     };
   }
   const next = deepMerge(current, patchForMerge);
+  let coordinatorRouting = next.forkCoordinatorRouting;
+  if (coordinatorRouting !== undefined && forkCoordinatorAccountAccess !== undefined) {
+    const excludedInstances = new Set(coordinatorRouting.excludedInstances);
+    const { instanceId, allowed } = forkCoordinatorAccountAccess;
+    if (allowed) {
+      excludedInstances.delete(instanceId);
+    } else {
+      excludedInstances.add(instanceId);
+    }
+    coordinatorRouting = {
+      ...coordinatorRouting,
+      excludedInstances: [...excludedInstances],
+    };
+  }
   const nextWithReplacementsBase = {
     ...next,
+    ...(coordinatorRouting === undefined ? {} : { forkCoordinatorRouting: coordinatorRouting }),
     favorites,
     providerModelPreferences: nextModelPreferences,
     ...(worktreeCleanupPatch === undefined

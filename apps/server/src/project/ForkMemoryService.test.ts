@@ -136,6 +136,35 @@ it.effect("scopes retrieval and rejects sources belonging to a different project
   }).pipe(Effect.provide(memoryLayer)),
 );
 
+it.effect("lists and searches every live scope, personal first, keeping same titles apart", () =>
+  Effect.gen(function* () {
+    const memory = yield* setup;
+    const sql = yield* SqlClient.SqlClient;
+    const save = (scope: ProjectId | null, id: string, title: string) =>
+      memory.save({
+        ...input,
+        projectId: scope,
+        id,
+        title,
+        commandId: CommandId.make(`index-${scope ?? "personal"}-${id}`),
+        sources: [],
+      });
+    yield* save(projectId, "hands", "How hands-on to be");
+    yield* save(null, "hands", "How hands-on to be");
+    yield* save(otherProjectId, "deleted", "Hands in a deleted project");
+    yield* save(null, "forgotten", "Hands someone forgot");
+    yield* memory.forget({ projectId: null, id: "forgotten", expectedRevision: 1 });
+    yield* sql`UPDATE projection_projects SET deleted_at = '2026-11-18' WHERE project_id = ${otherProjectId}`;
+
+    const keys = (entries: ReadonlyArray<{ projectId: ProjectId | null; id: string }>) =>
+      entries.map((entry) => `${entry.projectId ?? "personal"}/${entry.id}`);
+    const live = ["personal/hands", `${projectId}/hands`];
+    assert.deepStrictEqual(keys(yield* memory.index({ query: "" })), live);
+    assert.deepStrictEqual(keys(yield* memory.index({ query: "han" })), live);
+    assert.deepStrictEqual(yield* memory.index({ query: "payments refunds" }), []);
+  }).pipe(Effect.provide(memoryLayer)),
+);
+
 it.effect("forgets content and history and prevents an old capture from restoring it", () =>
   Effect.gen(function* () {
     const memory = yield* setup;

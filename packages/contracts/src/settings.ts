@@ -1831,6 +1831,9 @@ const ModelSelectionPatch = Schema.Struct({
 });
 
 export const ServerSettingsPatch = Schema.Struct({
+  forkCoordinatorAccountAccess: Schema.optionalKey(
+    Schema.Struct({ instanceId: ProviderInstanceId, allowed: Schema.Boolean }),
+  ),
   setModelFavorites: Schema.optionalKey(
     Schema.Array(Schema.Struct({ ...ModelFavorite.fields, favorite: Schema.Boolean })),
   ),

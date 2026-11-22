@@ -82,6 +82,7 @@ import {
   formatSearchToolLabel,
 } from "@t3tools/shared/toolActivityCopy";
 import { isHostPath } from "@t3tools/shared/path";
+import { settleMemoryChanges, type MemoryChange } from "../fork/memories.logic";
 
 export function timelineEntryRunId(entry: TimelineEntry): RunId | null {
   if (entry.kind === "message") {
@@ -90,7 +91,12 @@ export function timelineEntryRunId(entry: TimelineEntry): RunId | null {
   if (entry.kind === "proposed-plan") {
     return entry.proposedPlan.runId;
   }
-  if (entry.kind === "html-render" || entry.kind === "mcp-app" || entry.kind === "sent-message") {
+  if (
+    entry.kind === "html-render" ||
+    entry.kind === "mcp-app" ||
+    entry.kind === "sent-message" ||
+    entry.kind === "memory-change"
+  ) {
     return entry.runId;
   }
   return entry.kind === "work" ? (entry.entry.runId ?? null) : null;
@@ -684,6 +690,12 @@ type MessagesTimelineRowContent =
       text: string;
     }
   | {
+      kind: "memory-change";
+      id: string;
+      createdAt: string;
+      change: MemoryChange;
+    }
+  | {
       kind: "mcp-app";
       id: string;
       createdAt: string;
@@ -867,6 +879,7 @@ function deriveSupersededAttemptFolds(
       entry.kind === "html-render" ||
       entry.kind === "mcp-app" ||
       entry.kind === "sent-message" ||
+      entry.kind === "memory-change" ||
       timelineEntryIsPersistentResourceCard(entry) ||
       liveSubagentEntryIds.has(entry.id) ||
       (entry.kind === "work" && entry.entry.itemType === "system_notice")
@@ -1631,6 +1644,11 @@ export function deriveMessagesTimelineRows(
   resolve: MessageResolver = m,
 ): MessagesTimelineRow[] {
   const timelineEntries = timelineRowEntries(input);
+  const settledMemoryChanges = new Map(
+    settleMemoryChanges(timelineEntries.filter((entry) => entry.kind === "memory-change")).map(
+      (entry) => [entry.id, entry.change] as const,
+    ),
+  );
   const embeddedResultRunIds = new Set<RunId>();
   for (const entry of timelineEntries) {
     if ((entry.kind === "html-render" || entry.kind === "mcp-app") && entry.runId !== null) {
@@ -2231,6 +2249,19 @@ export function deriveMessagesTimelineRows(
         createdAt: timelineEntry.createdAt,
         text: timelineEntry.text,
       });
+      continue;
+    }
+
+    if (timelineEntry.kind === "memory-change") {
+      const change = settledMemoryChanges.get(timelineEntry.id);
+      if (change !== undefined) {
+        nextRows.push({
+          kind: "memory-change",
+          id: timelineEntry.id,
+          createdAt: timelineEntry.createdAt,
+          change,
+        });
+      }
       continue;
     }
 
@@ -2842,6 +2873,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     case "sent-message": {
       const bs = b as typeof a;
       return a.createdAt === bs.createdAt && a.text === bs.text;
+    }
+
+    case "memory-change": {
+      const bc = b as typeof a;
+      return a.createdAt === bc.createdAt && Equal.equals(a.change, bc.change);
     }
 
     case "mcp-app": {

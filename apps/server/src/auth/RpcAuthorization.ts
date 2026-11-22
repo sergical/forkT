@@ -45,6 +45,7 @@ export const RPC_REQUIRED_SCOPES = {
   ...CLIENT_GUARDED_RPC_SCOPES,
   [WS_METHODS.forkMemoryGet]: AuthOrchestrationReadScope,
   [WS_METHODS.forkMemorySearch]: AuthOrchestrationReadScope,
+  [WS_METHODS.forkMemoryIndex]: AuthOrchestrationReadScope,
   [WS_METHODS.forkMemoryHistory]: AuthOrchestrationReadScope,
   [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: AuthOrchestrationReadScope,

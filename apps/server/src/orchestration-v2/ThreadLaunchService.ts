@@ -605,6 +605,7 @@ const make = Effect.gen(function* () {
               branch: formatGeneratedBranchName(suffix, {
                 mode: "static",
                 prefix: settings.branchNamePrefix,
+                instructions: settings.branchNameInstructions,
               }),
               exactName: false,
             };

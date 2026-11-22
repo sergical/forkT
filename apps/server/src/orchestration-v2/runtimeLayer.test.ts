@@ -88,6 +88,7 @@ import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import { layerNoTaskFolders } from "./ProviderTurnStartService.testkit.ts";
+import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
 import * as RuntimeLayer from "./runtimeLayer.ts";
 import { shellStreamItemFromThreadShell } from "./ShellStream.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
@@ -350,8 +351,12 @@ const layerProjectionReplayTest = ProjectionReplay.layer.pipe(
   ),
 );
 
+const layerRuntimeTestWithProviderRegistry = RuntimeLayer.layer.pipe(
+  Layer.provide(ProviderRegistryMock.layer()),
+);
+
 const layerTest = Layer.mergeAll(
-  RuntimeLayer.layer,
+  layerRuntimeTestWithProviderRegistry,
   layerProjectionReplayTest,
   RuntimeLayer.layerEventSink,
   ProjectStore.layer,
@@ -371,7 +376,10 @@ const layerTest = Layer.mergeAll(
   Layer.provide(layerPlatformTest),
 );
 
-const layerLegacyImportTest = Layer.merge(RuntimeLayer.layer, layerProjectionReplayTest).pipe(
+const layerLegacyImportTest = Layer.merge(
+  layerRuntimeTestWithProviderRegistry,
+  layerProjectionReplayTest,
+).pipe(
   Layer.provide(McpSessionRegistryTestkit.layer),
   Layer.provide(McpProviderSessions.layer),
   Layer.provideMerge(SqlitePersistence.layerMemory),
@@ -470,7 +478,7 @@ const layerResourceCleanupTest = ResourceCleanupService.layer.pipe(
 );
 
 const layerProjectDeletionTest = Layer.mergeAll(
-  RuntimeLayer.layer.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
+  layerRuntimeTestWithProviderRegistry.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
   RuntimeLayer.layerProjectService,
   RuntimeLayer.layerEventSink,
   ProjectionStore.layer,
@@ -1349,7 +1357,7 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
 
 const layerSharedApplicationDataPlaneTest = Layer.mergeAll(
   layerProjectionReplayTest,
-  RuntimeLayer.layer.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
+  layerRuntimeTestWithProviderRegistry.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
   RuntimeLayer.layerProjectService,
   RuntimeLayer.layerEventSink,
   RuntimeLayer.layerEventInfrastructure,
@@ -14094,7 +14102,7 @@ const queueResumeDisabledInstanceProjectId = ProjectId.make(
 );
 
 const layerQueueResumeDisabledInstanceTest = Layer.mergeAll(
-  RuntimeLayer.layer,
+  layerRuntimeTestWithProviderRegistry,
   RuntimeLayer.layerEventSink,
   ProjectStore.layer,
   ProjectionStore.layer,

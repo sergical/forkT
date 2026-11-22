@@ -2871,6 +2871,7 @@ export const layerWsRpc = (
         [WS_METHODS.forkCoordinatorOpen]: coordinators.open,
         [WS_METHODS.forkMemoryGet]: memories.get,
         [WS_METHODS.forkMemorySearch]: memories.search,
+        [WS_METHODS.forkMemoryIndex]: memories.index,
         [WS_METHODS.forkMemoryHistory]: memories.history,
         [WS_METHODS.forkMemorySave]: memories.save,
         [WS_METHODS.forkMemoryForget]: memories.forget,

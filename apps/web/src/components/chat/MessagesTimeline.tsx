@@ -133,6 +133,7 @@ import {
   McpAppTimelineRow,
 } from "./TimelineAssistantRows";
 import { V2EventTimelineRow } from "./TimelineV2EventRow";
+import { MemoryChangeTimelineRow } from "../fork/MemoryChangeTimelineRow";
 import { startTimelinePositionRestore } from "./useTimelinePositionRestore";
 import {
   attachTimelineViewport,
@@ -1666,6 +1667,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "attempt-fold" ||
                   row.kind === "html-render" ||
                   row.kind === "sent-message" ||
+                  row.kind === "memory-change" ||
                   row.kind === "mcp-app" ||
                   row.kind === "viewed-images"
                 ? "pb-2"
@@ -1719,6 +1721,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "sent-message" ? <SentMessageTimelineRow row={row} /> : null}
       {row.kind === "viewed-images" ? <ViewedImagesTimelineRow row={row} /> : null}
       {row.kind === "mcp-app" ? <McpAppTimelineRow row={row} /> : null}
+      {row.kind === "memory-change" ? <MemoryChangeTimelineRow change={row.change} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
       {row.kind === "worktree-setup" ? <WorktreeSetupTimelineRow row={row} /> : null}
       {row.kind === "event" ? <V2EventTimelineRow row={row} /> : null}
