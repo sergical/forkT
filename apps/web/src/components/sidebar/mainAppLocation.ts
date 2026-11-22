@@ -4,9 +4,15 @@ import { GUEST_PAGE_PATH } from "../../guestPage";
 import { withoutAssistantCitationHash } from "../../lib/assistantCitationNavigation";
 import { resolveThreadRouteTarget, type ThreadRouteTarget } from "../../threadRoutes";
 
-/** Settings and Usage open as modals over the last main-app view. */
+const LEGACY_SETTINGS_PATHS = new Set(["/fork", "/memories", "/usage"]);
+
+/** Settings routes and their legacy links open over the last main-app view. */
 export function isAppModalPage(pathname: string) {
-  return pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/usage";
+  return (
+    pathname === "/settings" ||
+    pathname.startsWith("/settings/") ||
+    LEGACY_SETTINGS_PATHS.has(pathname.replace(/\/+$/, ""))
+  );
 }
 
 export function isSidebarUtilityPage(pathname: string) {

@@ -79,14 +79,19 @@ describe("main app return location", () => {
       return router.state.location.href;
     };
 
-    const closingUsage = await returnLocation(
+    const closingMemory = await returnLocation(
       "/settings/memories?environmentId=environment-one&memory=example",
+      "Close modal",
+    );
+    const closingOldMemory = await returnLocation(
+      "/memories?environmentId=environment-one&memory=example",
       "Close modal",
     );
     const sidebarBack = await returnLocation("/pull-requests", "Back to app");
 
-    expect({ closingUsage, sidebarBack }).toEqual({
-      closingUsage: THREAD_PATH,
+    expect({ closingMemory, closingOldMemory, sidebarBack }).toEqual({
+      closingMemory: THREAD_PATH,
+      closingOldMemory: THREAD_PATH,
       sidebarBack: THREAD_PATH,
     });
   });
