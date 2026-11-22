@@ -965,6 +965,7 @@ interface ResolvedBuildOptions {
 
 interface StagePackageJson {
   readonly name: string;
+  readonly productName?: string;
   readonly version: string;
   readonly buildVersion: string;
   readonly t3codeCommitHash: string;
@@ -3972,6 +3973,8 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       : undefined;
   const stagePackageJson: StagePackageJson = {
     name: "t3code",
+    // Electron uses the manifest name for macOS Safe Storage before main-process branding runs.
+    ...(options.platform === "mac" ? { productName: desktopPackageJson.productName } : {}),
     version: appVersion,
     buildVersion: appVersion,
     t3codeCommitHash: commitHash,
