@@ -5,6 +5,7 @@
   "scripts": {
     "typecheck": "effect-tsgo tsrs --noEmit",
     "scenarios": "E2E_TELEMETRY_DISABLED=1 e2e run",
+    "test:inbox-restart": "node scenarios/verify-inbox-restart.mjs",
     "test": "vp test run --config ../vite.config.ts --dir ."
   },
   "dependencies": {

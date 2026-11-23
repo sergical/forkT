@@ -43,6 +43,8 @@ for await (const line of NodeReadline.createInterface({ input: process.stdin }))
       });
       publish({ ...plan, id: itemId });
     } else if (prompt.includes("PLEASE IMPLEMENT")) {
+      const counter = process.env.INBOX_CHECK_COUNTER;
+      if (counter) NodeFS.appendFileSync(counter, "started\n");
       const text = NodeChildProcess.execFileSync(process.execPath, ["--check", process.argv[1]]);
       publish({
         type: "agentMessage",
