@@ -1,4 +1,5 @@
 import {
+  MAIN_COORDINATOR_MEMORY_SCOPE,
   ForkMemory,
   ForkMemoryError,
   ForkMemoryForgetInput,
@@ -40,7 +41,7 @@ export class ForkMemoryService extends Context.Service<
       readonly projectId: ProjectId;
       readonly runId: RunId;
       readonly query: string;
-      readonly includeProject?: boolean;
+      readonly mainCoordinator?: boolean;
     }) => Effect.Effect<string, ForkMemoryError>;
   }
 >()("t3/project/ForkMemoryService") {}
@@ -82,7 +83,7 @@ const make = Effect.gen(function* () {
   const checkProject = Effect.fn("ForkMemoryService.checkProject")(function* (
     projectId: ForkMemoryKey["projectId"],
   ) {
-    if (projectId === null) return;
+    if (projectId === null || projectId === MAIN_COORDINATOR_MEMORY_SCOPE) return;
     const rows =
       yield* sql`SELECT project_id FROM projection_projects WHERE project_id = ${projectId} AND deleted_at IS NULL`;
     if (rows.length === 0) return yield* new ForkMemoryError({ reason: "not_found" });
@@ -152,7 +153,7 @@ const make = Effect.gen(function* () {
           SELECT m.payload_json AS payload, m.revision FROM fork_memories m
           LEFT JOIN projection_projects p ON p.project_id = substr(m.scope, 9)
           WHERE m.payload_json IS NOT NULL
-            AND (m.scope = 'personal' OR (p.project_id IS NOT NULL AND p.deleted_at IS NULL))
+            AND (m.scope IN ('personal', ${scopeOf(MAIN_COORDINATOR_MEMORY_SCOPE)}) OR (p.project_id IS NOT NULL AND p.deleted_at IS NULL))
           ORDER BY m.scope <> 'personal', m.scope,
             json_extract(m.payload_json, '$.updatedAt') DESC, m.memory_id
           LIMIT 500
@@ -162,7 +163,7 @@ const make = Effect.gen(function* () {
           JOIN fork_memories m ON m.scope = s.scope AND m.memory_id = s.memory_id
           LEFT JOIN projection_projects p ON p.project_id = substr(m.scope, 9)
           WHERE fork_memory_search MATCH ${match} AND m.payload_json IS NOT NULL
-            AND (m.scope = 'personal' OR (p.project_id IS NOT NULL AND p.deleted_at IS NULL))
+            AND (m.scope IN ('personal', ${scopeOf(MAIN_COORDINATOR_MEMORY_SCOPE)}) OR (p.project_id IS NOT NULL AND p.deleted_at IS NULL))
           ORDER BY m.scope <> 'personal', m.scope,
             bm25(fork_memory_search, 0, 0, 10.0, 1.0), m.memory_id
           LIMIT 50
@@ -198,7 +199,7 @@ const make = Effect.gen(function* () {
     readonly projectId: ProjectId;
     readonly runId: RunId;
     readonly query: string;
-    readonly includeProject?: boolean;
+    readonly mainCoordinator?: boolean;
   }) {
     return yield* sql.withTransaction(
       Effect.gen(function* () {
@@ -215,13 +216,10 @@ const make = Effect.gen(function* () {
           const personal = (yield* searchEntries({ projectId: null, query: "" }))
             .filter((entry) => entry.kind === "preference")
             .slice(0, 3);
-          const project =
-            input.includeProject === false
-              ? []
-              : (yield* searchEntries({
-                  projectId: input.projectId,
-                  query: input.query.slice(0, 500),
-                })).slice(0, 8);
+          const project = (yield* searchEntries({
+            projectId: input.mainCoordinator ? MAIN_COORDINATOR_MEMORY_SCOPE : input.projectId,
+            query: input.query.slice(0, 500),
+          })).slice(0, 8);
           references = buildMemoryBrief([...personal, ...project]).references;
           const encoded = yield* encodeReferences(references);
           yield* sql`
@@ -299,7 +297,10 @@ const make = Effect.gen(function* () {
           WHERE m.message_id = ${ref.messageId} AND m.thread_id = ${ref.threadId}
             AND m.streaming = 0 AND t.deleted_at IS NULL
             AND json_type(m.payload_json, '$.text') = 'text' 
-            AND (${input.projectId} IS NULL OR t.project_id = ${input.projectId})
+            AND (
+              ${input.projectId} IS NULL OR t.project_id = ${input.projectId}
+              OR (${input.projectId} = ${MAIN_COORDINATOR_MEMORY_SCOPE} AND t.thread_id LIKE 'fork:global:%')
+            )
         `.pipe(Effect.flatMap(decodeSources));
           const source = rows[0];
           if (source === undefined)

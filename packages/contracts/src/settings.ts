@@ -543,9 +543,7 @@ export const ClientSettingsSchema = Schema.Struct({
   boringSidebarChosenAt: Schema.NullOr(Schema.String).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
-  boringSidebarMultilineRows: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(false)),
-  ),
+  boringSidebarMultilineRows: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   toolCallVisibility: ToolCallVisibility.pipe(
     Schema.withDecodingDefault(Effect.succeed("showAll" as const)),
   ),

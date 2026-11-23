@@ -711,6 +711,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     "thread.settle": () => {
       if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return false;
       if (!activeThreadShell || !activeThreadRef || !serverConfigLoaded) return;
+      if (isForkCoordinatorThreadId(activeThreadRef.threadId)) return;
       if (activeThreadSettled) {
         void handleUnsettleActiveThread();
         return;

@@ -71,6 +71,7 @@ export function useMemoryPaletteItems(query: string): CommandPaletteActionItem[]
               : {}),
           })),
           personalLabel: gt("Personal"),
+          mainCoordinatorLabel: gt("Main coordinator"),
         });
   // Earlier results stay while the next search settles, so the group does not blink per key.
   const [shown, setShown] = useState<ReadonlyArray<MemoryPaletteEntry>>([]);

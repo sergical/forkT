@@ -1,14 +1,14 @@
 import { useAtomValue } from "@effect/atom-react";
 import { CommandId, type EnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { T, useGT } from "gt-react";
 import { useState } from "react";
 import { randomUUID } from "../../lib/utils";
-import { useProjects, useVisibleThreadShells } from "../../state/entities";
+import { useProjects } from "../../state/entities";
 import { forkMemory } from "../../state/forkMemory";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { pendingForkThreads } from "../fork/forkInbox";
+import { ForkDecisionInbox } from "../fork/ForkDecisionInbox";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { ForkCoordinatorAccounts } from "./ForkCoordinatorAccounts";
 import { Button } from "../ui/button";
@@ -81,7 +81,12 @@ export function ForkThreadTools() {
           projectId={selected.projectId}
         />
       ) : null}
-      <ForkInbox environmentId={selected.environmentId} projectId={selected.projectId} />
+      <section className="space-y-3" aria-label={gt("Inbox")}>
+        <h2 className="text-lg font-medium">
+          <T>Inbox</T>
+        </h2>
+        <ForkDecisionInbox environmentId={selected.environmentId} projectId={selected.projectId} />
+      </section>
     </div>
   );
 }
@@ -105,7 +110,10 @@ function CoordinatorControls({
     if (busy || !allowed) return;
     setBusy(true);
     setError(null);
-    const result = await open({ environmentId, input: { projectId, global } });
+    const result = await open({
+      environmentId,
+      input: global ? { global } : { projectId, global },
+    });
     setBusy(false);
     if (result._tag === "Success")
       await navigate({
@@ -144,45 +152,6 @@ function CoordinatorControls({
         </Button>
       </div>
       {error ? <p role="alert">{error}</p> : null}
-    </section>
-  );
-}
-
-function ForkInbox({
-  environmentId,
-  projectId,
-}: {
-  environmentId: EnvironmentId;
-  projectId: ProjectId | null;
-}) {
-  const gt = useGT();
-  const pending = pendingForkThreads(useVisibleThreadShells(), environmentId, projectId);
-
-  return (
-    <section className="space-y-3" aria-label={gt("Inbox")}>
-      <h2 className="text-lg font-medium">
-        <T>Inbox</T> <span className="text-muted-foreground">{pending.length}</span>
-      </h2>
-      {pending.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          <T>No questions or approvals need your attention.</T>
-        </p>
-      ) : (
-        <ul className="divide-y rounded-xl border">
-          {pending.map(({ thread, reason }) => (
-            <li key={thread.id} className="flex items-center justify-between gap-3 p-3">
-              <Link
-                to="/$environmentId/$threadId"
-                params={{ environmentId, threadId: thread.id }}
-                className="font-medium hover:underline"
-              >
-                {thread.title}
-              </Link>
-              <span className="text-sm text-muted-foreground">{reason}</span>
-            </li>
-          ))}
-        </ul>
-      )}
     </section>
   );
 }

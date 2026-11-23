@@ -637,6 +637,19 @@ export function threadHasUnfinishedWork(records: {
   );
 }
 
+const coordinatorLifecycleCommands = new Set<OrchestrationV2ServerCommand["type"]>([
+  "thread.settle",
+  "thread.auto-settle",
+  "thread.auto-settle.set",
+  "thread.snooze",
+  "thread.archive",
+  "thread.delete",
+  "thread.pin",
+  "thread.unpin",
+  "thread.pin.reorder",
+  "thread.active.reorder",
+]);
+
 function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
   switch (command.type) {
     case "thread.create":
@@ -4575,18 +4588,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandId: command.commandId,
         commandType: command.type,
         cause: `Thread ${command.threadId} is archived.`,
-      });
-    }
-    if (
-      (command.type === "thread.pin" ||
-        command.type === "thread.unpin" ||
-        command.type === "thread.pin.reorder") &&
-      isForkCoordinatorThreadId(thread.id)
-    ) {
-      return yield* new OrchestratorDispatchError({
-        commandId: command.commandId,
-        commandType: command.type,
-        cause: "Coordinator threads belong to their project and cannot be pinned or unpinned.",
       });
     }
     // Reject reorder after unpin so a raced request cannot restore a cleared pin.
@@ -15815,6 +15816,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       "orchestration_v2.command_type": command.type,
       "orchestration_v2.thread_id": commandThreadId(command),
     });
+
+    if (
+      coordinatorLifecycleCommands.has(command.type) &&
+      isForkCoordinatorThreadId(commandThreadId(command))
+    ) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Coordinator threads stay active and cannot be moved or removed.",
+      });
+    }
 
     const events = yield* Ref.make<Array<OrchestrationV2DomainEvent>>([]);
     const effects = yield* Ref.make<Array<PendingOrchestrationEffectV2>>([]);

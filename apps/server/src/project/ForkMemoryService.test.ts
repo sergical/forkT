@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  MAIN_COORDINATOR_MEMORY_SCOPE,
   MessageId,
   ProjectId,
   ThreadId,
@@ -195,19 +196,44 @@ it.effect("reopens saved memory with its source and revision after closing the d
     const layer = ForkMemoryService.layer.pipe(
       Layer.provideMerge(NodeSqliteClient.layer({ filename: `${dir}/state.sqlite` })),
     );
+    const decision = "Keep the ad hoc payment experiments offline.";
     const saved = yield* Effect.scoped(
-      setup.pipe(
-        Effect.flatMap((memory) => memory.save(input)),
-        Effect.provide(layer),
-      ),
+      Effect.gen(function* () {
+        const memory = yield* setup;
+        yield* memory.save({
+          ...input,
+          projectId: MAIN_COORDINATOR_MEMORY_SCOPE,
+          title: "Ad hoc payment experiments",
+          commandId: CommandId.make("main-memory-reopen"),
+
+          body: decision,
+          sources: [],
+        });
+        return yield* memory.save(input);
+      }).pipe(Effect.provide(layer)),
     );
-    const reopened = yield* Effect.scoped(
-      ForkMemoryService.ForkMemoryService.pipe(
-        Effect.flatMap((memory) => memory.get(input)),
-        Effect.provide(layer),
-      ),
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const memory = yield* ForkMemoryService.ForkMemoryService;
+        assert.deepStrictEqual(yield* memory.get(input), saved);
+        assert.strictEqual(yield* memory.get({ ...input, projectId: null }), null);
+        const main = yield* memory.brief({
+          projectId,
+          runId: RunId.make("main-after-reopen"),
+          query: "payment",
+          mainCoordinator: true,
+        });
+        assert.include(main, decision);
+        assert.notInclude(main, "idempotency key");
+        const project = yield* memory.brief({
+          projectId,
+          runId: RunId.make("project-after-reopen"),
+          query: "payment",
+        });
+        assert.include(project, "idempotency key");
+        assert.notInclude(project, decision);
+      }).pipe(Effect.provide(layer)),
     );
-    assert.deepStrictEqual(reopened, saved);
   }).pipe(Effect.provide(NodeServices.layer)),
 );
 

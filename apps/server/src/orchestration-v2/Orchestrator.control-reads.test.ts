@@ -1013,6 +1013,22 @@ it.effect("implements a proposed plan that the command projection leaves out", (
     });
 
     assert.equal((yield* projections.getPlan(threadId, planId))?.status, "completed");
+
+    const staleResponse = yield* orchestrator
+      .dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("stale-plan-response"),
+        threadId,
+        messageId: MessageId.make("stale-plan-response-input"),
+        text: "Change the plan.",
+        attachments: [],
+        sourcePlanRef: { threadId, planId },
+        dispatchMode: { type: "defer_start" },
+        createdBy: "user",
+        creationSource: "web",
+      })
+      .pipe(Effect.flip);
+    assert.include(staleResponse.cause, "is not active");
   }).pipe(Effect.provide(layerTest)),
 );
 

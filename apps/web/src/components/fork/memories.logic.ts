@@ -1,5 +1,6 @@
 import {
   EnvironmentId,
+  MAIN_COORDINATOR_MEMORY_SCOPE,
   ProjectId,
   type ForkMemoryIndexEntry,
   type OrchestrationV2TurnItem,
@@ -72,6 +73,7 @@ export interface MemoryScopeGroup {
 export function groupMemoryEntries(
   entries: ReadonlyArray<ForkMemoryIndexEntry>,
   projects: ReadonlyArray<MemoryScopeProject>,
+  mainCoordinatorLabel: string,
 ): MemoryScopeGroup[] {
   const byScope = new Map<string, ForkMemoryIndexEntry[]>();
   for (const entry of entries) {
@@ -92,7 +94,10 @@ export function groupMemoryEntries(
     });
   }
   const known = new Set<string>();
-  for (const project of projects) {
+  for (const project of [
+    { id: MAIN_COORDINATOR_MEMORY_SCOPE, title: mainCoordinatorLabel, archivedAt: null },
+    ...projects,
+  ]) {
     known.add(project.id);
     const list = byScope.get(project.id);
     if (!list) continue;
@@ -135,9 +140,10 @@ export function memoryPaletteEntries(input: {
     readonly environmentLabel?: string;
   }>;
   readonly personalLabel: string;
+  readonly mainCoordinatorLabel: string;
 }): MemoryPaletteEntry[] {
   return input.results.flatMap(({ environmentId, entries, projects, environmentLabel }) =>
-    groupMemoryEntries(entries, projects).flatMap((group) => {
+    groupMemoryEntries(entries, projects, input.mainCoordinatorLabel).flatMap((group) => {
       if (group.unavailable !== null) return [];
       const scope = group.title ?? input.personalLabel;
       const scopeLabel = environmentLabel === undefined ? scope : `${scope} · ${environmentLabel}`;

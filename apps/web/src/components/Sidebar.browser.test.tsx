@@ -140,7 +140,7 @@ describe("sidebar numbered jumps", () => {
     stack.defer(() => useComposerDraftStore.setState(initial, true));
     const previousSettings = getClientSettings();
     stack.defer(() => __setClientSettingsForTests(previousSettings));
-    __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
+    __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, boringSidebarEnabled: false });
     using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
     const web = project("web");
     vi.mocked(useProjects).mockReturnValue([web]);
@@ -203,9 +203,16 @@ function threadShell(projectId: ProjectId, index: number): EnvironmentThreadShel
   });
 }
 
+function useFlatSidebarForTest() {
+  const previous = getClientSettings();
+  __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, boringSidebarEnabled: false });
+  return { [Symbol.dispose]: () => __setClientSettingsForTests(previous) };
+}
+
 describe("sidebar render isolation", () => {
   // regression: #33100 Cmd+J re-rendered every sidebar row, which took hundreds of ms with many threads
   it("does not re-render thread rows when a quick Mod shortcut opens and focuses the terminal", async () => {
+    using _flatSidebar = useFlatSidebarForTest();
     using stack = new DisposableStack();
     const activeProject = project("active");
     const threads = Array.from({ length: 5 }, (_, index) => threadShell(activeProject.id, index));
@@ -281,6 +288,7 @@ describe("sidebar thread rename", () => {
   it.each(["{Enter}", "{Tab}"])(
     "ending an untouched rename with %s keeps a title that arrived while it was open",
     async (finish) => {
+      using _flatSidebar = useFlatSidebarForTest();
       const activeProject = project("active");
       const routeThreadRef: ScopedThreadRef = {
         environmentId: activeProject.environmentId,
@@ -331,6 +339,7 @@ describe("sidebar thread rename", () => {
 
 describe("sidebar thread menu", () => {
   it("tells the menu whether the keyboard opened it", async () => {
+    using _flatSidebar = useFlatSidebarForTest();
     const activeProject = project("active");
     const thread = threadShell(activeProject.id, 0);
     const threadRef = { environmentId: activeProject.environmentId, threadId: thread.id };
@@ -370,6 +379,7 @@ describe("sidebar thread menu", () => {
 
 describe("sidebar settled pagination", () => {
   it("keeps the viewport in place when showing more settled threads", async () => {
+    using _flatSidebar = useFlatSidebarForTest();
     using stack = new DisposableStack();
     const style = document.createElement("style");
     style.textContent = appCss;

@@ -1,3 +1,4 @@
+import { MAIN_COORDINATOR_MEMORY_SCOPE } from "@t3tools/contracts";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { randomUUID } from "../../lib/utils";
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router";
@@ -54,10 +55,12 @@ function MemoriesPage() {
     const scope =
       ref.projectId === null
         ? "Personal"
-        : (projects.find(
-            (project) =>
-              project.environmentId === ref.environmentId && project.id === ref.projectId,
-          )?.title ?? "Unknown project");
+        : ref.projectId === MAIN_COORDINATOR_MEMORY_SCOPE
+          ? gt("Main coordinator")
+          : (projects.find(
+              (project) =>
+                project.environmentId === ref.environmentId && project.id === ref.projectId,
+            )?.title ?? "Unknown project");
     const location = environmentLabel(ref.environmentId);
     return location === null ? scope : `${scope} · ${location}`;
   };
@@ -66,6 +69,7 @@ function MemoriesPage() {
   );
   const targets = connected.flatMap((environment) => [
     { environmentId: environment.environmentId, projectId: null },
+    { environmentId: environment.environmentId, projectId: MAIN_COORDINATOR_MEMORY_SCOPE },
     ...projects
       .filter(
         (project) =>
@@ -164,11 +168,12 @@ function EnvironmentMemories({
   query: string;
   selected: MemoryRef | null;
 }) {
+  const gt = useGT();
   const projects = useProjects().filter((project) => project.environmentId === environmentId);
   const entries = useEnvironmentQuery(
     connected ? forkMemory.index({ environmentId, input: { query } }) : null,
   );
-  const groups = groupMemoryEntries(entries.data ?? [], projects);
+  const groups = groupMemoryEntries(entries.data ?? [], projects, gt("Main coordinator"));
   const body = !connected ? (
     <p className="text-sm text-muted-foreground">
       Unavailable while {label ?? "this environment"} is disconnected.
@@ -303,6 +308,7 @@ function MemorySelection({
         environment.environmentId === environmentId && environment.connection.phase === "connected",
     ) &&
     (projectId === null ||
+      projectId === MAIN_COORDINATOR_MEMORY_SCOPE ||
       projects.some(
         (project) =>
           project.environmentId === environmentId &&

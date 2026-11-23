@@ -3899,17 +3899,34 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         threadId: coordinatorId,
         title: "Coordinator",
       });
-      for (const type of ["thread.pin", "thread.unpin", "thread.pin.reorder"] as const) {
+      const coordinatorShell = yield* orchestrator.getThreadProjection(coordinatorId);
+      for (const command of [
+        { type: "thread.settle" },
+        { type: "thread.auto-settle", snapshotAt: coordinatorShell.thread.updatedAt },
+        {
+          type: "thread.snooze",
+          snoozedUntil: DateTime.formatIso(DateTime.add(yield* DateTime.now, { hours: 1 })),
+        },
+        { type: "thread.archive" },
+        { type: "thread.delete" },
+        { type: "thread.pin" },
+        { type: "thread.unpin" },
+        { type: "thread.pin.reorder", orderKey: "a0" },
+        { type: "thread.active.reorder", orderKey: "a0" },
+      ] as const) {
         const rejected = yield* orchestrator
           .dispatch({
-            type,
-            commandId: CommandId.make(`runtime-layer-lifecycle-coordinator-${type}`),
+            ...command,
+            commandId: CommandId.make(`runtime-layer-lifecycle-coordinator-${command.type}`),
             threadId: coordinatorId,
-            orderKey: "a0",
           })
           .pipe(Effect.flip);
-        assert.include(rejected.cause, "cannot be pinned or unpinned");
+        assert.include(rejected.cause, "Coordinator threads stay active");
       }
+      assert.equal(
+        (yield* orchestrator.getThreadProjection(coordinatorId)).thread.id,
+        coordinatorId,
+      );
 
       const archive = yield* orchestrator.dispatch({
         type: "thread.archive",

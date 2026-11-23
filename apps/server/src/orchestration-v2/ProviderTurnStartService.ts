@@ -2202,7 +2202,7 @@ export const layer: Layer.Layer<
                   projectId: projection.thread.projectId,
                   runId,
                   query: userText,
-                  includeProject: coordinator?.scope !== "global",
+                  mainCoordinator: coordinator?.scope === "global",
                 })
                 .pipe(
                   Effect.catch((error) =>

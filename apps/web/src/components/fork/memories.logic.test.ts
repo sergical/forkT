@@ -26,6 +26,7 @@ describe("memoryPaletteEntries", () => {
   it("opens each found memory in its own scope and names that scope", () => {
     const found = memoryPaletteEntries({
       personalLabel: "Personal",
+      mainCoordinatorLabel: "Main coordinator",
       results: [
         {
           environmentId,

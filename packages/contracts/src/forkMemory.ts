@@ -11,6 +11,9 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 
+/** Reserved memory scope for the main coordinator, independent of its workspace. */
+export const MAIN_COORDINATOR_MEMORY_SCOPE = ProjectId.make("fork:main-memory");
+
 const MemoryId = TrimmedNonEmptyString.check(Schema.isMaxLength(100));
 const MemoryTitle = TrimmedNonEmptyString.check(Schema.isMaxLength(160));
 const MemoryBody = TrimmedNonEmptyString.check(Schema.isMaxLength(8000));

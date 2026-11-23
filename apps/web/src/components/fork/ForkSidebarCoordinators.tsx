@@ -9,6 +9,7 @@ import {
 import { GitForkIcon } from "lucide-react";
 import { useGT } from "gt-react";
 import { useState } from "react";
+import { ForkInboxButton } from "./ForkDecisionInbox";
 
 import { cn } from "../../lib/utils";
 import { forkMemory } from "../../state/forkMemory";
@@ -58,20 +59,27 @@ export function ForkSidebarCoordinators(props: {
   };
 
   return (
-    <div className="mb-2 flex flex-col gap-px" data-testid="fork-sidebar-coordinators">
+    <div className="mb-2 flex items-center gap-1" data-testid="fork-sidebar-coordinators">
       <button
         type="button"
         aria-current={active ? "page" : undefined}
         disabled={main === undefined && (props.environmentId === null || opening)}
         className={rowClassName(active)}
         onClick={() => {
-          if (main) props.onOpenThread(scopeThreadRef(main.environmentId, main.id));
-          else if (props.environmentId) void openMain(props.environmentId);
+          if (
+            main &&
+            main.settledAt == null &&
+            main.settledOverride !== "settled" &&
+            main.snoozedUntil == null
+          ) {
+            props.onOpenThread(scopeThreadRef(main.environmentId, main.id));
+          } else if (props.environmentId) void openMain(props.environmentId);
         }}
       >
         <GitForkIcon aria-hidden className="size-4 shrink-0" />
         <span className="min-w-0 flex-1 truncate font-medium">{gt("Main coordinator")}</span>
       </button>
+      {props.environmentId && <ForkInboxButton environmentId={props.environmentId} />}
     </div>
   );
 }
@@ -80,6 +88,9 @@ export function ForkSidebarCoordinators(props: {
 export function ForkFolderCoordinatorRow(props: {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
+  readonly projectName: string;
+  readonly thread?: EnvironmentThreadShell;
+  readonly active?: boolean;
   /** The folder's tree row, so arrow keys reach this row like its threads. */
   readonly folderRow: string;
   readonly onOpenThread: (threadRef: ScopedThreadRef) => void;
@@ -88,6 +99,16 @@ export function ForkFolderCoordinatorRow(props: {
   const open = useAtomCommand(forkMemory.openCoordinator, { reportFailure: true });
   const [opening, setOpening] = useState(false);
   const openProject = async () => {
+    const thread = props.thread;
+    if (
+      thread &&
+      thread.settledAt == null &&
+      thread.settledOverride !== "settled" &&
+      thread.snoozedUntil == null
+    ) {
+      props.onOpenThread(scopeThreadRef(props.environmentId, thread.id));
+      return;
+    }
     setOpening(true);
     const result = await open({
       environmentId: props.environmentId,
@@ -97,17 +118,30 @@ export function ForkFolderCoordinatorRow(props: {
     if (result._tag === "Success")
       props.onOpenThread(scopeThreadRef(props.environmentId, result.value.threadId));
   };
+  const thread = props.thread;
+  const status =
+    thread?.hasPendingApprovals ||
+    thread?.hasPendingUserInput ||
+    thread?.pendingSubagentRequest != null
+      ? gt("Needs you")
+      : thread?.runtime?.status === "running"
+        ? gt("Working")
+        : props.projectName;
   return (
     <li className="list-none">
       <button
         type="button"
         data-sidebar-row={`${props.folderRow}:coordinator`}
         data-sidebar-parent={props.folderRow}
+        aria-current={props.active ? "page" : undefined}
         disabled={opening}
-        className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 ps-9 text-left text-sm text-sidebar-muted-foreground outline-none hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className={cn(rowClassName(props.active ?? false), "h-auto min-h-10 px-2.5 ps-9 py-1")}
         onClick={() => void openProject()}
       >
-        <span className="min-w-0 flex-1 truncate">{gt("Coordinator")}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{gt("Coordinator")}</span>
+          <span className="block truncate text-xs text-sidebar-muted-foreground">{status}</span>
+        </span>
       </button>
     </li>
   );

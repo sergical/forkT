@@ -58,6 +58,26 @@ export const layer = Layer.effect(
             ),
             threadId: shell.id,
           });
+        if (shell.settledAt != null || shell.settledOverride === "settled") {
+          yield* threads.dispatch({
+            type: "thread.unsettle",
+            commandId: CommandId.make(
+              `restore-active:${shell.id}:${DateTime.toEpochMillis(shell.updatedAt)}`,
+            ),
+            threadId: shell.id,
+            reason: "user",
+          });
+        }
+        if (shell.snoozedUntil != null) {
+          yield* threads.dispatch({
+            type: "thread.unsnooze",
+            commandId: CommandId.make(
+              `restore-awake:${shell.id}:${DateTime.toEpochMillis(shell.updatedAt)}`,
+            ),
+            threadId: shell.id,
+            reason: "user",
+          });
+        }
         return {
           projectId: existing.projectId,
           global: input.global,

@@ -1,9 +1,16 @@
+import { MAIN_COORDINATOR_MEMORY_SCOPE } from "@t3tools/contracts";
+
 export function forkCoordinatorInstructions(global: boolean, routingEnabled = false): string {
   return [
     "T3 fork coordinator role (selected by the user):",
     global
       ? "You coordinate work across projects. Use t3_coordinator_open with global:false to find each project coordinator, then t3_thread_send to route its task and report the decisions that need the user. Keep personal preferences separate from project facts."
       : "You are this project's persistent coordinator. Own the task from request through verification. Keep the user's conversation here; use delegated threads for independent features, research, implementation and review when useful. This coordinator role authorizes delegation within the user's task scope.",
+    ...(global
+      ? [
+          `Save durable decisions from project-free or cross-project work with t3_memory_save and projectId "${MAIN_COORDINATOR_MEMORY_SCOPE}". Use the personal scope for user preferences and the project scope for facts specific to that project.`,
+        ]
+      : []),
     "Use existing T3 delegation and thread tools. Each child needs a concrete task, relevant decisions, and a completion check. Use a separate worktree when changes need isolation. Track child results and resolve their findings before reporting completion.",
     ...(routingEnabled
       ? [
