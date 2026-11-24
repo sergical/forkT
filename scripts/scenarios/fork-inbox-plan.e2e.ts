@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- The scenario writes a local Codex launcher.
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import * as NodeUrl from "node:url";
+import * as NodeURL from "node:url";
 import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 import { expect } from "e2e";
 import * as Effect from "effect/Effect";
@@ -14,7 +14,7 @@ test(
   async ({ t3, app, screen, browser }) => {
     const project = await t3.project("Plan project");
     const binary = NodePath.join(project, "replay-codex");
-    const fixture = NodeUrl.fileURLToPath(new URL("./inbox-codex-recording.mjs", import.meta.url));
+    const fixture = NodeURL.fileURLToPath(new URL("./inbox-codex-recording.mjs", import.meta.url));
     const recording = NodePath.join(
       APP_DIR,
       "apps/server/src/orchestration-v2/testkit/fixtures/proposed_plan/codex_transcript.ndjson",
