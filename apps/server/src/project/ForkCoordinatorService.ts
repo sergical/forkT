@@ -3,6 +3,7 @@ import {
   ForkCoordinatorError,
   MessageId,
   type ProjectId,
+  type ThreadId,
   type ForkCoordinator,
   type ForkCoordinatorOpenInput,
 } from "@t3tools/contracts";
@@ -22,13 +23,18 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 
 import * as Clock from "effect/Clock";
-import { recommendForkRoute, refreshForkRoutingProviders } from "./forkCoordinatorRouting.ts";
+import {
+  recommendForkRoute,
+  refreshForkRoutingProviders,
+  verifyForkDispatch,
+} from "./forkCoordinatorRouting.ts";
 
 export class ForkCoordinatorService extends Context.Service<
   ForkCoordinatorService,
   {
     readonly open: (
       input: ForkCoordinatorOpenInput,
+      handoff?: { readonly senderThreadId: ThreadId },
     ) => Effect.Effect<ForkCoordinator, ForkCoordinatorError>;
   }
 >()("t3/project/ForkCoordinatorService") {}
@@ -172,7 +178,7 @@ export const layer = Layer.effect(
       };
     });
     const open = Effect.fn("ForkCoordinatorService.open")(
-      function* (input: ForkCoordinatorOpenInput) {
+      function* (input: ForkCoordinatorOpenInput, handoff?: { readonly senderThreadId: ThreadId }) {
         const projectId =
           input.projectId ??
           (input.global
@@ -198,7 +204,26 @@ export const layer = Layer.effect(
         const coordinator = yield* ensure({ ...input, projectId });
         // Delivered under its own command, never the launch's, so a retry replays it and
         // concurrent first sends each land.
-        if (input.message !== undefined)
+        if (input.message !== undefined) {
+          if (handoff !== undefined && !(yield* threads.hasReceipt(input.message.commandId))) {
+            const settings = yield* settingsService.getSettings;
+            if (settings.forkCoordinatorRouting !== undefined) {
+              const destination = yield* threads.getThreadShell(coordinator.threadId);
+              if (destination === null) {
+                return yield* new ForkCoordinatorError({
+                  message: "The project coordinator was not found.",
+                });
+              }
+              const route = yield* verifyForkDispatch(
+                providers,
+                settings,
+                coordinator.projectId,
+                destination.modelSelection,
+              );
+              if (route.selection === null)
+                return yield* new ForkCoordinatorError({ message: route.reason });
+            }
+          }
           yield* threads.sendToThread({
             projectId: coordinator.projectId,
             commandId: input.message.commandId,
@@ -207,9 +232,11 @@ export const layer = Layer.effect(
             text: input.message.text,
             attachments: [],
             mode: "queue",
-            createdBy: "user",
-            creationSource: "web",
+            createdBy: handoff === undefined ? "user" : "agent",
+            creationSource: handoff === undefined ? "web" : "mcp",
+            ...handoff,
           });
+        }
         return coordinator;
       },
       Effect.mapError((error) =>

@@ -1,14 +1,10 @@
-import { ForkCoordinatorService } from "../../../project/ForkCoordinatorService.ts";
-import {
-  CommandId,
-  isForkMainCoordinatorThreadId,
-  OrchestratorMcpFailure,
-} from "@t3tools/contracts";
+import { isForkMainCoordinatorThreadId, OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import * as HtmlRender from "../../../htmlRender/HtmlRender.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
+import { handoffProjectDeliverable } from "../../handoffProjectDeliverable.ts";
 import { loadCaller } from "../../threadAccess.ts";
 import { HtmlPreviewToolkit, HtmlRenderToolkit, type HtmlToolkit } from "./tools.ts";
 
@@ -85,48 +81,8 @@ const handlers = {
         });
       }
       if (input.intent?.kind === "project") {
-        if (!main)
-          return yield* new OrchestratorMcpFailure({
-            code: "invalid_request",
-            message: "Project handoffs originate in the main coordinator.",
-          });
-        const { caller } = yield* McpToolAccess.environmentWriteCaller();
-        const { projectId, source, requestId } = input.intent;
-        const key = [
-          thread.threadId,
-          caller?.activeRunId ?? thread.providerSessionId,
-          projectId,
-          requestId,
-        ]
-          .map((part) => `${part.length}:${part}`)
-          .join("");
-        const origin = McpInvocationContext.threadLinkFor(
-          scope,
-          thread.threadId,
-          "Main coordinator",
-        );
-        const coordinators = yield* ForkCoordinatorService;
-        const destination = yield* coordinators
-          .open({
-            global: false,
-            projectId,
-            message: {
-              commandId: CommandId.make("html-handoff:" + key),
-              text: `From ${origin} for this project. Complete and render the requested deliverable here.\n\n${source}`,
-            },
-          })
-          .pipe(
-            Effect.mapError(
-              (error) =>
-                new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
-            ),
-          );
-        const link = McpInvocationContext.threadLinkFor(
-          scope,
-          destination.threadId,
-          "Project coordinator",
-        );
-        return { link, message: `Handed off to ${link}. Include this link in your reply.` };
+        const { link, message } = yield* handoffProjectDeliverable(input.intent);
+        return { link, message };
       }
       if (input.title === undefined || input.height === undefined)
         return yield* new OrchestratorMcpFailure({

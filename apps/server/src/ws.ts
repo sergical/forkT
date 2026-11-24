@@ -2899,7 +2899,7 @@ export const layerWsRpc = (
         [WS_METHODS.pullRequestsReviewGuide]: (input) =>
           withPullRequestViewer(input, reviewGuides.get(input)),
         [WS_METHODS.forkDreamStart]: dreams.start,
-        [WS_METHODS.forkCoordinatorOpen]: coordinators.open,
+        [WS_METHODS.forkCoordinatorOpen]: (input) => coordinators.open(input),
         [WS_METHODS.forkMemoryGet]: memories.get,
         [WS_METHODS.forkMemorySearch]: memories.search,
         [WS_METHODS.forkMemoryIndex]: memories.index,

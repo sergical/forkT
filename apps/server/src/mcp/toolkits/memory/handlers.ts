@@ -10,6 +10,7 @@ import * as ForkDreamService from "../../../project/ForkDreamService.ts";
 import * as ForkCoordinatorService from "../../../project/ForkCoordinatorService.ts";
 import * as ForkMemoryService from "../../../project/ForkMemoryService.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
+import { handoffProjectDeliverable } from "../../handoffProjectDeliverable.ts";
 import { readCaller } from "../../threadAccess.ts";
 import { MemoryToolkit } from "./tools.ts";
 
@@ -49,6 +50,21 @@ export const layer = McpToolAccess.toLayer(MemoryToolkit, {
   ),
   t3_coordinator_open: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
+      if (input.handoff !== undefined) {
+        if (
+          input.global ||
+          input.projectId !== undefined ||
+          input.message !== undefined ||
+          input.modelSelection !== undefined
+        ) {
+          return yield* new OrchestratorMcpFailure({
+            code: "invalid_request",
+            message:
+              "For a project handoff, pass global:false and put the project ID and source only in handoff.",
+          });
+        }
+        return yield* handoffProjectDeliverable(input.handoff);
+      }
       const coordinators = yield* ForkCoordinatorService.ForkCoordinatorService;
       return yield* coordinators
         .open(input)

@@ -1,5 +1,5 @@
 import { ForkCoordinatorService } from "../../../project/ForkCoordinatorService.ts";
-import { ProjectId, TrimmedNonEmptyString, OrchestratorMcpFailure } from "@t3tools/contracts";
+import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import {
   HTML_RENDER_COLUMN_WIDTH,
   HTML_RENDER_LAYOUT_GUIDE,
@@ -16,6 +16,8 @@ import { McpSchema, Tool, Toolkit } from "effect/ai";
 import * as HtmlRender from "../../../htmlRender/HtmlRender.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+
+import { ProjectDeliverableHandoff } from "../../handoffProjectDeliverable.ts";
 
 const Html = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512_000)).annotate({
   description: "Inline HTML.",
@@ -84,14 +86,7 @@ const HtmlRenderTool = Tool.make(HTML_RENDER_TOOL_NAME, {
         Schema.Struct({ kind: Schema.Literal("inline") }),
         Schema.Struct({
           kind: Schema.Literal("project"),
-          projectId: ProjectId,
-          source: TrimmedNonEmptyString.check(Schema.isMaxLength(18000)).annotate({
-            description:
-              "Original request, relevant decisions, and completion criteria for the project coordinator.",
-          }),
-          requestId: TrimmedNonEmptyString.check(Schema.isMaxLength(128)).annotate({
-            description: "Stable within this run for this deliverable. Reuse on retry.",
-          }),
+          ...ProjectDeliverableHandoff.fields,
         }),
       ]),
     ),

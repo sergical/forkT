@@ -19,6 +19,8 @@ import * as ForkMemoryService from "../../../project/ForkMemoryService.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
+import { ProjectDeliverableHandoff } from "../../handoffProjectDeliverable.ts";
+
 const shared = {
   failure: OrchestratorMcpFailure,
   failureMode: "return" as const,
@@ -97,12 +99,17 @@ const Forget = Tool.make("t3_memory_forget", {
 const Coordinator = Tool.make("t3_coordinator_open", {
   ...shared,
   description:
-    "Open a persistent T3 fork coordinator. global:false selects the project's coordinator; global:true selects this environment's main coordinator. Reuses its conversation, or creates an idle one. Send work with t3_thread_send using the returned threadId. Needs full-access/default mode.",
+    "Open a persistent T3 fork coordinator. global:false selects the project's coordinator; global:true selects this environment's main coordinator. Reuses its conversation, or creates an idle one. From main, pass global:false and handoff to queue a known-project deliverable with its source and get an openable receipt in one call. Needs full-access/default mode.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     ...ForkCoordinatorOpenInput.fields,
+    handoff: Schema.optional(ProjectDeliverableHandoff),
   }),
-  success: ForkCoordinator,
+  success: Schema.Struct({
+    ...ForkCoordinator.fields,
+    link: Schema.optional(Schema.String),
+    message: Schema.optional(Schema.String),
+  }),
   dependencies: [...shared.dependencies, ForkCoordinatorService.ForkCoordinatorService],
 })
   .annotate(Tool.Destructive, false)
