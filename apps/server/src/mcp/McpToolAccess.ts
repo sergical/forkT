@@ -327,6 +327,16 @@ const fullAccessRequired =
   "Changing projects or environment settings needs a live full-access/default calling thread or a full-access client.";
 const changesEnvironment = "change projects or environment settings";
 
+export const environmentWriteCaller = (allowLinked = false) =>
+  orchestratingCaller.pipe(
+    Effect.tap((caller) =>
+      allowLinked ? Effect.void : assertNotLinked(caller, changesEnvironment),
+    ),
+    Effect.tap((caller) =>
+      assertFullAccessNamingLink(caller, fullAccessRequired, changesEnvironment),
+    ),
+  );
+
 /** Recheck after waits before writing; caller modes may have changed. */
 export const writesEnvironment = <P, A, E, R>(
   handle: (
@@ -341,16 +351,7 @@ export const writesEnvironment = <P, A, E, R>(
     readonly linkedCallers?: "allowed";
   },
 ) => {
-  const check = orchestratingCaller.pipe(
-    Effect.tap((caller) =>
-      options?.linkedCallers === "allowed"
-        ? Effect.void
-        : assertNotLinked(caller, changesEnvironment),
-    ),
-    Effect.tap((caller) =>
-      assertFullAccessNamingLink(caller, fullAccessRequired, changesEnvironment),
-    ),
-  );
+  const check = environmentWriteCaller(options?.linkedCallers === "allowed");
   return declare(
     (params: P) => check.pipe(Effect.flatMap(() => handle(params, check))),
     // Linked work never reaches a link at all; that is checked as the call goes.

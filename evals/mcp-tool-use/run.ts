@@ -5,6 +5,7 @@
  * harness capture supplies the prompt and native tools; a cheap model plays the shell. See
  * README.md for how to run it and add cases.
  */
+import { forkCoordinatorInstructions } from "../../apps/server/src/project/forkCoordinatorInstructions.ts";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeUtil from "node:util";
@@ -348,6 +349,7 @@ export const McpToolUseCase = Schema.Struct({
   rule: Schema.optional(Schema.String),
   privacy: Schema.optional(Schema.Literals(["commit-safe", "private"])),
   setup: Schema.Struct({
+    mainCoordinator: Schema.optional(Schema.Boolean),
     role: Schema.Literals(["top", "delegated-child", "native-subagent"]),
     /** Runs only on this harness, for cases whose right answer depends on it. */
     harness: Schema.optional(Schema.Literals(["claude", "codex"])),
@@ -1213,6 +1215,7 @@ export const buildMessages = (sample: Sample) => {
         });
   const native = role === "native-subagent";
   const notes = [
+    testCase.setup.mainCoordinator ? forkCoordinatorInstructions(true) : undefined,
     native
       ? "You are a subagent started by the parent agent's Agent tool. Your final message goes to the parent agent, not to the user."
       : undefined,

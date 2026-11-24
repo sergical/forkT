@@ -1,4 +1,5 @@
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import { ForkCoordinatorService } from "../../../project/ForkCoordinatorService.ts";
+import { ProjectId, TrimmedNonEmptyString, OrchestratorMcpFailure } from "@t3tools/contracts";
 import {
   HTML_RENDER_COLUMN_WIDTH,
   HTML_RENDER_LAYOUT_GUIDE,
@@ -75,27 +76,46 @@ export const HtmlPreviewTool = Tool.make("html_preview", {
   .annotate(Tool.OpenWorld, true)
   .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
-// This affects only the caller's thread, not its workspace, so read-only sandboxes and plan mode may use it.
 const HtmlRenderTool = Tool.make(HTML_RENDER_TOOL_NAME, {
-  description: `Show a finished HTML page (chart, diagram, mockup) inline in this thread, above your final reply. Do not announce or restate the page. Frame fits height to ${HTML_RENDER_MAX_FIT_HEIGHT}px. On mobile, content past the given height scrolls. ${HTML_RENDER_LAYOUT_GUIDE} ${HTML_RENDER_THEME_GUIDE}`,
+  description: `Main coordinator must declare intent. For known-project work, pass only intent with the project ID and source brief before creating HTML. Return the destination link. Otherwise show a finished HTML page (chart, diagram, mockup) inline in this thread, above your final reply. Do not announce or restate the page. Frame fits height to ${HTML_RENDER_MAX_FIT_HEIGHT}px. On mobile, content past the given height scrolls. ${HTML_RENDER_LAYOUT_GUIDE} ${HTML_RENDER_THEME_GUIDE}`,
   parameters: Schema.Struct({
+    intent: Schema.optional(
+      Schema.Union([
+        Schema.Struct({ kind: Schema.Literal("inline") }),
+        Schema.Struct({
+          kind: Schema.Literal("project"),
+          projectId: ProjectId,
+          source: TrimmedNonEmptyString.check(Schema.isMaxLength(18000)).annotate({
+            description:
+              "Original request, relevant decisions, and completion criteria for the project coordinator.",
+          }),
+          requestId: TrimmedNonEmptyString.check(Schema.isMaxLength(128)).annotate({
+            description: "Stable within this run for this deliverable. Reuse on retry.",
+          }),
+        }),
+      ]),
+    ),
     path: Schema.optional(HtmlPath),
     html: Schema.optional(Html),
-    title: Schema.String.check(
-      Schema.isMinLength(1),
-      Schema.isMaxLength(HTML_RENDER_MAX_TITLE_LENGTH),
+    title: Schema.optional(
+      Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(HTML_RENDER_MAX_TITLE_LENGTH)),
     ),
-    height: Schema.Int.annotate({
-      description: `Frame height in CSS pixels, ${HTML_RENDER_MIN_HEIGHT} to ${HTML_RENDER_MAX_HEIGHT}. Use the contentHeight from html_preview.`,
-    }),
+    height: Schema.optional(
+      Schema.Int.annotate({
+        description: `Frame height in CSS pixels, ${HTML_RENDER_MIN_HEIGHT} to ${HTML_RENDER_MAX_HEIGHT}. Use the contentHeight from html_preview.`,
+      }),
+    ),
   }),
   success: Schema.Struct({
-    htmlRender: Schema.Struct({
-      attachmentId: Schema.String,
-      title: Schema.String,
-      height: Schema.Number,
-      heights: Schema.optional(Schema.Array(Schema.Tuple([Schema.Int, Schema.Int]))),
-    }),
+    link: Schema.optional(Schema.String),
+    htmlRender: Schema.optional(
+      Schema.Struct({
+        attachmentId: Schema.String,
+        title: Schema.String,
+        height: Schema.Number,
+        heights: Schema.optional(Schema.Array(Schema.Tuple([Schema.Int, Schema.Int]))),
+      }),
+    ),
     message: Schema.String,
   }),
   failure: OrchestratorMcpFailure,
@@ -104,10 +124,11 @@ const HtmlRenderTool = Tool.make(HTML_RENDER_TOOL_NAME, {
     McpInvocationContext.McpInvocationContext,
     ThreadManagementService.ThreadManagementService,
     HtmlRender.HtmlRender,
+    ForkCoordinatorService,
   ],
 })
   .annotate(Tool.Title, "Render HTML")
-  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, true)

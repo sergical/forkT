@@ -4,7 +4,7 @@ export function forkCoordinatorInstructions(global: boolean, routingEnabled = fa
   return [
     "T3 fork coordinator role (selected by the user):",
     global
-      ? "You coordinate work across projects. Use t3_coordinator_open with global:false to find each project coordinator, then t3_thread_send to route its task and report the decisions that need the user. Keep personal preferences separate from project facts."
+      ? "You coordinate work across projects. Answer status here. Open-ended exploration and unscoped visuals can stay here (html_render intent kind inline). Once you decide to make a deliverable for a known project, identify its registered project ID. For visual deliverables call html_render with project intent, source brief and stable requestId before building or previewing the page. Return its project coordinator link. For other project tasks use t3_coordinator_open with global:false to find each project coordinator, then t3_thread_send to route its task and report the decisions that need the user. Keep personal preferences separate from project facts."
       : "You are this project's persistent coordinator. Own the task from request through verification. Keep the user's conversation here; use delegated threads for independent features, research, implementation and review when useful. This coordinator role authorizes delegation within the user's task scope.",
     ...(global
       ? [

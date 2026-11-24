@@ -1,4 +1,9 @@
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import { ForkCoordinatorService } from "../../../project/ForkCoordinatorService.ts";
+import {
+  CommandId,
+  isForkMainCoordinatorThreadId,
+  OrchestratorMcpFailure,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import * as HtmlRender from "../../../htmlRender/HtmlRender.ts";
@@ -71,6 +76,63 @@ const handlers = {
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const { thread } = yield* McpInvocationContext.requireThreadScope(scope, "html_render");
+      const main = isForkMainCoordinatorThreadId(thread.threadId);
+      if (main && !input.intent) {
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message:
+            "Declare inline intent for an unscoped visual or project intent for a known project deliverable.",
+        });
+      }
+      if (input.intent?.kind === "project") {
+        if (!main)
+          return yield* new OrchestratorMcpFailure({
+            code: "invalid_request",
+            message: "Project handoffs originate in the main coordinator.",
+          });
+        const { caller } = yield* McpToolAccess.environmentWriteCaller();
+        const { projectId, source, requestId } = input.intent;
+        const key = [
+          thread.threadId,
+          caller?.activeRunId ?? thread.providerSessionId,
+          projectId,
+          requestId,
+        ]
+          .map((part) => `${part.length}:${part}`)
+          .join("");
+        const origin = McpInvocationContext.threadLinkFor(
+          scope,
+          thread.threadId,
+          "Main coordinator",
+        );
+        const coordinators = yield* ForkCoordinatorService;
+        const destination = yield* coordinators
+          .open({
+            global: false,
+            projectId,
+            message: {
+              commandId: CommandId.make("html-handoff:" + key),
+              text: `From ${origin} for this project. Complete and render the requested deliverable here.\n\n${source}`,
+            },
+          })
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
+            ),
+          );
+        const link = McpInvocationContext.threadLinkFor(
+          scope,
+          destination.threadId,
+          "Project coordinator",
+        );
+        return { link, message: `Handed off to ${link}. Include this link in your reply.` };
+      }
+      if (input.title === undefined || input.height === undefined)
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message: "Inline renders require a title and height.",
+        });
       const htmlRender = yield* HtmlRender.HtmlRender;
       const source = yield* pageSource(input);
       const reference = yield* htmlRender

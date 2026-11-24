@@ -1,3 +1,10 @@
+import * as Coordinator from "../project/ForkCoordinatorService.ts";
+import * as CoordinatorStore from "../project/ForkCoordinatorStore.ts";
+import * as HtmlRender from "../htmlRender/HtmlRender.ts";
+import * as HtmlHandlers from "../mcp/toolkits/html/handlers.ts";
+import { HtmlRenderToolkit } from "../mcp/toolkits/html/tools.ts";
+import * as McpAccess from "../mcp/McpToolAccess.ts";
+import * as McpContext from "../mcp/McpInvocationContext.ts";
 import { PullRequestProviderError } from "@t3tools/source-control-core/server/PullRequestProvider";
 import { PullRequestUnavailableError, SourceControlProviderKind } from "@t3tools/contracts";
 import { limitRecoveryCommand } from "./UsageLimitRecoveryWorker.ts";
@@ -11929,6 +11936,118 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         .pipe(Effect.flip);
       assert.equal(cancelAgainError._tag, "OrchestratorDispatchError");
     }),
+  );
+});
+
+it.layer(layerSharedApplicationDataPlaneTest)("main coordinator project handoff", (it) => {
+  it.effect("queues one project run with the source and returns its link on retry", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectService.ProjectService;
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const store = yield* CoordinatorStore.ForkCoordinatorStore;
+      const main = ThreadId.make("fork:global:1");
+      const target = ProjectId.make("known-project");
+      for (const projectId of [ProjectId.make("scratch"), target]) {
+        yield* projects.create({
+          projectId,
+          commandId: CommandId.make(projectId),
+          title: projectId,
+          workspaceRoot: "/tmp/" + projectId,
+        });
+        const threadId =
+          projectId === target
+            ? (yield* store.claim({
+                global: false,
+                projectId,
+                modelSelection,
+                runtimeMode: "full-access",
+              })).threadId
+            : main;
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make(threadId),
+          threadId,
+          projectId,
+          title: threadId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdBy: "user",
+          creationSource: "web",
+        });
+      }
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("landing"),
+        threadId: main,
+        messageId: MessageId.make("landing"),
+        text: "Report status, then design a landing page for the known project.",
+        attachments: [],
+        modelSelection,
+        dispatchMode: { type: "start_immediately" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const destination = (yield* store.get({ global: false, projectId: target }))!.threadId;
+      const scope = {
+        environmentId: EnvironmentId.make("local"),
+        requestNamespace: "fixture",
+        issuedAt: 0,
+        client: undefined,
+        thread: {
+          threadId: main,
+          providerInstanceId: modelSelection.instanceId,
+          providerSessionId: "fixture",
+        },
+        capabilities: new Set(["orchestration" as const]),
+      };
+      assert.lengthOf((yield* orchestrator.getThreadProjection(destination)).runs, 0);
+      const source = "Create the landing page using the project's existing typography.";
+      const call = Effect.gen(function* () {
+        const toolkit = yield* HtmlRenderToolkit;
+        return yield* toolkit
+          .handle("html_render", {
+            intent: { kind: "project", projectId: target, source, requestId: "landing" },
+          })
+          .pipe(
+            Stream.unwrap,
+            Stream.runCollect,
+            Effect.map((parts) => parts.at(-1)?.result),
+          );
+      }).pipe(
+        Effect.provide(McpAccess.HandlersLayer.layer(HtmlHandlers.layerRender)),
+        Effect.provideService(McpContext.McpInvocationContext, scope),
+      );
+      for (let attempt = 0; attempt < 2; attempt++)
+        assert.include(yield* call, {
+          link: McpContext.threadLinkFor(scope, destination, "Project coordinator"),
+        });
+      const projection = yield* orchestrator.getThreadProjection(destination);
+      assert.lengthOf(projection.runs, 1);
+      assert.lengthOf(projection.messages, 1);
+      assert.include(projection.messages[0]!.text, source);
+      assert.include(
+        projection.messages[0]!.text,
+        McpContext.threadLinkFor(scope, main, "Main coordinator"),
+      );
+    }).pipe(
+      Effect.provide(
+        Coordinator.layer.pipe(
+          Layer.provideMerge(CoordinatorStore.layer),
+          Layer.provide(ServerSettings.layerTest()),
+          Layer.provide(ProviderRegistryMock.layer()),
+          Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
+          Layer.provide(
+            Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+              namedProjectsRoot: "/tmp/projects",
+            }),
+          ),
+          Layer.merge(Layer.mock(HtmlRender.HtmlRender)({})),
+        ),
+      ),
+    ),
   );
 });
 
