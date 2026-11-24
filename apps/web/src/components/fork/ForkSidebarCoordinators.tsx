@@ -9,6 +9,7 @@ import {
 import { GitForkIcon } from "lucide-react";
 import { useGT } from "gt-react";
 import { useState } from "react";
+import { JumpHintBadge } from "../sidebar/SidebarThreadRow";
 import { ForkInboxButton } from "./ForkDecisionInbox";
 
 import { cn } from "../../lib/utils";
@@ -23,28 +24,34 @@ const rowClassName = (active: boolean) =>
       : "text-sidebar-foreground/90 hover:bg-sidebar-row-hover",
   );
 
+export function findMainCoordinatorInSidebar(
+  threads: readonly EnvironmentThreadShell[],
+  environmentId: EnvironmentId | null,
+) {
+  return threads.find(
+    (thread) =>
+      thread.archivedAt == null &&
+      thread.deletedAt == null &&
+      isForkMainCoordinatorThreadId(thread.id) &&
+      thread.environmentId === environmentId,
+  );
+}
+
 /**
  * T3 fork: the main coordinator's fixed row above the thread list. Project coordinators are
  * ordinary list rows, first in their project's folder.
  */
 export function ForkSidebarCoordinators(props: {
   readonly environmentId: EnvironmentId | null;
-  /** Every thread shell, coordinators included. */
-  readonly threads: readonly EnvironmentThreadShell[];
+  readonly main: EnvironmentThreadShell | undefined;
+  readonly jumpLabel: string | null;
   readonly routeRowThreadKey: string | null;
   readonly onOpenThread: (threadRef: ScopedThreadRef) => void;
 }) {
   const gt = useGT();
   const open = useAtomCommand(forkMemory.openCoordinator, { reportFailure: true });
   const [opening, setOpening] = useState(false);
-  // Each environment has its own main coordinator; this row opens the primary one's.
-  const main = props.threads.find(
-    (thread) =>
-      thread.archivedAt == null &&
-      thread.deletedAt == null &&
-      isForkMainCoordinatorThreadId(thread.id) &&
-      thread.environmentId === props.environmentId,
-  );
+  const { main } = props;
   const active =
     main !== undefined &&
     props.routeRowThreadKey === scopedThreadKey(scopeThreadRef(main.environmentId, main.id));
@@ -78,6 +85,7 @@ export function ForkSidebarCoordinators(props: {
       >
         <GitForkIcon aria-hidden className="size-4 shrink-0" />
         <span className="min-w-0 flex-1 truncate font-medium">{gt("Main coordinator")}</span>
+        {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
       </button>
       {props.environmentId && <ForkInboxButton environmentId={props.environmentId} />}
     </div>

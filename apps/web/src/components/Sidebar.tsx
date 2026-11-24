@@ -241,7 +241,11 @@ import {
   snoozeWakeLabel,
   type SnoozePreset,
 } from "./Sidebar.snooze";
-import { ForkFolderCoordinatorRow, ForkSidebarCoordinators } from "./fork/ForkSidebarCoordinators";
+import {
+  findMainCoordinatorInSidebar,
+  ForkFolderCoordinatorRow,
+  ForkSidebarCoordinators,
+} from "./fork/ForkSidebarCoordinators";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { deriveProviderEntriesByEnvironment } from "../providerInstances";
 import { useStableCallback } from "../hooks/useStableCallback";
@@ -1531,10 +1535,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const routeDraftRowKey = `draft:${routeDraftIdForRows}`;
   const routeRowKey = draftIdByRowKey.has(routeDraftRowKey) ? routeDraftRowKey : routeRowThreadKey;
 
+  const mainCoordinator = findMainCoordinatorInSidebar(allThreads, primaryEnvironmentId);
+  const firstThreadJumpIndex = mainCoordinator === undefined ? 0 : 1;
   const jumpLabelByKey = (() => {
     const mapping = new Map<string, string>();
     for (const [index, rowKey] of orderedRowKeys.entries()) {
-      const jumpCommand = threadJumpCommandForIndex(index);
+      const jumpCommand = threadJumpCommandForIndex(index + firstThreadJumpIndex);
       if (!jumpCommand) break;
       const label = shortcutLabelForCommand(keybindings, jumpCommand);
       if (label) mapping.set(rowKey, label);
@@ -3079,6 +3085,33 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       handleThreadContextMenu(threadRef, position, source, true),
   );
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the first numbered shortcut must run before focused composer widgets consume it
+  useEffect(() => {
+    if (mainCoordinator === undefined) return;
+    const onMainCoordinatorShortcut = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.isComposing ||
+        isCommandPaletteOpen() ||
+        isModelPickerOpen() ||
+        (event.target instanceof Element &&
+          event.target.closest('[data-keybinding-capture], [role="alertdialog"]'))
+      )
+        return;
+      const command = resolveShortcutCommand(event, keybindings, {
+        platform: navigator.platform,
+        context: threadShortcutContext(routeThreadRef),
+      });
+      if (command !== "thread.jump.1") return;
+      event.preventDefault();
+      event.stopPropagation();
+      void navigateToThread(scopeThreadRef(mainCoordinator.environmentId, mainCoordinator.id));
+    };
+    window.addEventListener("keydown", onMainCoordinatorShortcut, true);
+    return () => window.removeEventListener("keydown", onMainCoordinatorShortcut, true);
+  }, [keybindings, mainCoordinator, navigateToThread, routeThreadRef]);
+
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to window keydown for thread navigation shortcuts using the current thread list
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
@@ -3113,13 +3146,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         return;
       }
       const jumpIndex = threadJumpIndexFromCommand(command ?? "");
-      if (jumpIndex === null) return;
-      navigateToRowKey(orderedRowKeys[jumpIndex] ?? null);
+      if (jumpIndex === null || jumpIndex < firstThreadJumpIndex) return;
+      navigateToRowKey(orderedRowKeys[jumpIndex - firstThreadJumpIndex] ?? null);
     };
     window.addEventListener("keydown", onWindowKeyDown);
     return () => window.removeEventListener("keydown", onWindowKeyDown);
   }, [
     draftIdByRowKey,
+    firstThreadJumpIndex,
     keybindings,
     navigateToDraft,
     navigateToThread,
@@ -3442,7 +3476,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           {!isSearchingThreads ? (
             <ForkSidebarCoordinators
               environmentId={primaryEnvironmentId}
-              threads={allThreads}
+              main={mainCoordinator}
+              jumpLabel={
+                showJumpHints && mainCoordinator
+                  ? shortcutLabelForCommand(keybindings, "thread.jump.1")
+                  : null
+              }
               routeRowThreadKey={routeRowThreadKey}
               onOpenThread={(threadRef) => void navigateToThread(threadRef)}
             />
