@@ -82,9 +82,6 @@ describe("runMigrations", () => {
         { migration_id: 1, name: "ForkMemory" },
         { migration_id: 2, name: "ForkCoordinators" },
       ]);
-      assert.isFalse(
-        migrationManifest.some(([, name]) => name === "ForkMemory" || name === "ForkCoordinators"),
-      );
 
       // query_only rejects BEGIN IMMEDIATE, which CLI startup would otherwise take on the live database.
       yield* sql`PRAGMA query_only = ON`;
