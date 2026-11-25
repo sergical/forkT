@@ -676,7 +676,8 @@ it.layer(layerTest)("CheckpointStore.layer", (it) => {
           timeoutMs: 10_000,
         });
         yield* git(tmp, ["config", "gpg.format", "ssh"]);
-        yield* git(tmp, ["config", "user.signingkey", `${signingKey}.pub`]);
+        yield* git(tmp, ["config", "gpg.ssh.program", "ssh-keygen"]);
+        yield* git(tmp, ["config", "user.signingkey", signingKey]);
         yield* git(tmp, ["config", "log.showSignature", "true"]);
         const checkpointStore = yield* CheckpointStore.CheckpointStore;
         const threadId = ThreadId.make("checkpoint-authored-paths-signed");
