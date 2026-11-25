@@ -1,4 +1,3 @@
-import { ThreadId } from "@t3tools/contracts";
 import { expect } from "e2e";
 import * as Effect from "effect/Effect";
 import { T3_HOME } from "../e2e.config.ts";
@@ -14,7 +13,7 @@ test(
       messages: ["Prepare an example."],
     });
     const origin = app.baseUrl ?? "";
-    await runPromise(
+    const main = await runPromise(
       Effect.gen(function* () {
         const client = yield* rpcClient(T3_HOME, origin);
         // Chromium reserves the desktop-only default. Bind the same command for the web runner.
@@ -33,12 +32,13 @@ test(
           command: "thread.jump.1",
           when: "isWeb",
         });
+        return yield* client["forkCoordinator.open"]({ global: true });
       }).pipe(Effect.scoped),
     );
     const environment = await runPromise(environmentId(origin));
     await t3.open();
     await screen.getByRole("button", "Main coordinator").tap();
-    const mainUrl = new RegExp(`/${environment}/fork%3Aglobal%3A1$`);
+    const mainUrl = new RegExp(`/${environment}/${encodeURIComponent(main.threadId)}$`);
     await expect(browser).toHaveURL(mainUrl);
     await app.open(`/${environment}/${encodeURIComponent(worker.threadId)}`);
     await screen.getByRole("textbox", "Message Project worker").tap();
@@ -61,7 +61,7 @@ test(
       Effect.gen(function* () {
         const client = yield* rpcClient(T3_HOME, origin);
         return yield* client["orchestration.getThreadProjection"]({
-          threadId: ThreadId.make("fork:global:1"),
+          threadId: main.threadId,
         });
       }).pipe(Effect.scoped),
     );
