@@ -5,6 +5,7 @@ import {
   type SignalExport,
 } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
+import { FORK_SENTRY_DSN, FORK_SENTRY_ENV, sentryOtlpEndpoint } from "@t3tools/shared/forkSentry";
 import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
 import { DesktopBackendBootstrap, PortSchema } from "@t3tools/contracts";
 import * as Config from "effect/Config";
@@ -132,6 +133,7 @@ const EnvServerConfig = Config.all({
   otlpProtocol: Config.schema(OtlpProtocol, "T3CODE_OTLP_PROTOCOL").pipe(
     Config.withDefault("http/json"),
   ),
+  forkSentry: Config.Boolean(FORK_SENTRY_ENV).pipe(Config.withDefault(false)),
   mode: Config.schema(ServerConfig.RuntimeMode, "T3CODE_MODE").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -490,6 +492,21 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     },
   );
 
+  // T3 fork: packaged builds send traces and logs to the fork's Sentry project, unless an endpoint
+  // is configured or OTEL turns the signal off.
+  const forkSentryEndpoint = (signal: "traces" | "logs") => {
+    if (!env.forkSentry || otel.disabled || otel[signal]._tag !== "Unset") return undefined;
+    const endpoint = sentryOtlpEndpoint(FORK_SENTRY_DSN.server, signal);
+    return endpoint === undefined
+      ? undefined
+      : {
+          url: endpoint.url,
+          export: { ...signalExport, headers: { ...signalExport.headers, ...endpoint.headers } },
+        };
+  };
+  const forkTraces = traces === undefined ? forkSentryEndpoint("traces") : undefined;
+  const forkLogs = logs === undefined ? forkSentryEndpoint("logs") : undefined;
+
   const config: ServerConfig.ServerConfig["Service"] = {
     logLevel,
     traceMinLevel: env.traceMinLevel,
@@ -497,19 +514,29 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     traceBatchWindowMs: env.traceBatchWindowMs,
     traceMaxBytes: env.traceMaxBytes,
     traceMaxFiles: env.traceMaxFiles,
-    otlpTracesUrl: traces?.url,
+    otlpTracesUrl: traces?.url ?? forkTraces?.url,
     otlpMetricsUrl: metrics?.url,
-    otlpLogsUrl: logs?.url,
-    otlpTracesExport: traces?.export ?? signalExport,
+    otlpLogsUrl: logs?.url ?? forkLogs?.url,
+    otlpTracesExport: traces?.export ?? forkTraces?.export ?? signalExport,
     otlpMetricsExport: metrics?.export ?? signalExport,
-    otlpLogsExport: logs?.export ?? signalExport,
+    otlpLogsExport: logs?.export ?? forkLogs?.export ?? signalExport,
+    ...(env.forkSentry ? { forkSentry: { sampleTraces: forkTraces !== undefined } } : {}),
     ...(traces !== undefined ? { otlpTracesSource: traces.source } : {}),
     ...(traces?.variable !== undefined ? { otlpTracesVariable: traces.variable } : {}),
     ...(metrics !== undefined ? { otlpMetricsSource: metrics.source } : {}),
     ...(metrics?.variable !== undefined ? { otlpMetricsVariable: metrics.variable } : {}),
     ...(logs !== undefined ? { otlpLogsSource: logs.source } : {}),
     ...(logs?.variable !== undefined ? { otlpLogsVariable: logs.variable } : {}),
-    otelEnvironment: otel,
+    // Fork builds are not upstream's official releases, which alone report production by channel.
+    otelEnvironment: env.forkSentry
+      ? {
+          ...otel,
+          resourceAttributes: {
+            "deployment.environment.name": "production",
+            ...otel.resourceAttributes,
+          },
+        }
+      : otel,
     mode,
     port,
     cwd,

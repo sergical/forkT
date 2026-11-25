@@ -1,5 +1,6 @@
 import {
   AuthOrchestrationOperateScope,
+  isForkMainCoordinatorThreadId,
   type EnvironmentId,
   type ScopedThreadRef,
   type ThreadId,
@@ -263,7 +264,7 @@ export const ChatHeader = memo(function ChatHeader({
         ariaLabel={gt("Thread breadcrumb")}
         className="flex-1 overflow-clip [overflow-clip-margin:2px]"
       >
-        {activeProject ? (
+        {activeProject && !isForkMainCoordinatorThreadId(activeThreadId) ? (
           <>
             <WorkspaceBreadcrumbItem className="shrink">
               <Tooltip>

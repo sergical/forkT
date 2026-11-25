@@ -70,6 +70,27 @@ const setup = Effect.gen(function* () {
 });
 
 describe("command permissions", () => {
+  it.effect("requires the destination operate grant to save or forget memory", () =>
+    Effect.gen(function* () {
+      const registry = yield* setup;
+      registry.set(sessions(env), AsyncResult.success(grant(true)));
+      registry.set(sessions(other), AsyncResult.success(grant(false)));
+      for (const tag of [
+        WS_METHODS.forkMemorySave,
+        WS_METHODS.forkMemoryForget,
+        WS_METHODS.forkCoordinatorOpen,
+        WS_METHODS.forkDreamStart,
+      ]) {
+        const memory = createCommandPermissions(runtime, tag);
+        yield* memory.authorize(registry, env);
+        expect(registry.get(memory.permissionAtom(env))).toBe(true);
+        expect(registry.get(memory.permissionAtom(other))).toBe(false);
+        expect((yield* memory.authorize(registry, other).pipe(Effect.flip))._tag).toBe(
+          "EnvironmentAuthorizationError",
+        );
+      }
+    }),
+  );
   it.effect("requires the destination read grant to refresh providers", () =>
     Effect.gen(function* () {
       const registry = yield* setup;

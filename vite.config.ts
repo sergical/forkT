@@ -606,6 +606,8 @@ export default defineConfig({
           "**/{test-fixtures,*TestFixtures}.ts",
           "apps/mobile/src/features/development/**",
           "packages/client-runtime/src/rpc/**",
+          // T3 fork screens stay English, so nightly rebases never touch the locale catalogs.
+          "apps/web/src/components/fork/**",
         ],
         rules: { "t3code/no-untranslated-copy": "error" },
       },

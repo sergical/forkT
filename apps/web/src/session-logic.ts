@@ -23,6 +23,7 @@ import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/tool
 import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
 import { turnItemDetailRevision } from "@t3tools/client-runtime/work-log/item-detail";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
+import { memoryChangeFromToolItem, type MemoryChange } from "./components/fork/memories.logic";
 import {
   htmlRenderFromToolItem,
   mcpAppFromToolItem,
@@ -132,6 +133,13 @@ export type TimelineEntry = (
       readonly createdAt: string;
       readonly runId: RunId | null;
       readonly text: string;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "memory-change";
+      readonly createdAt: string;
+      readonly runId: RunId | null;
+      readonly change: MemoryChange;
     }
   | {
       readonly id: string;
@@ -720,6 +728,19 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
         createdAt,
         runId: item.runId,
         text: sentMessage,
+        ...attemptMetadata,
+      });
+      continue;
+    }
+
+    const memoryChange = item.type === "dynamic_tool" ? memoryChangeFromToolItem(item) : null;
+    if (memoryChange !== null) {
+      entries.push({
+        id: item.id,
+        kind: "memory-change",
+        createdAt,
+        runId: item.runId,
+        change: memoryChange,
         ...attemptMetadata,
       });
       continue;

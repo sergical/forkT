@@ -331,6 +331,16 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ipcRenderer.removeListener(IpcChannels.WINDOW_FULLSCREEN_STATE_CHANNEL, wrappedListener);
     };
   },
+  forkLiveUpdate: {
+    getState: () => ipcRenderer.invoke(IpcChannels.FORK_LIVE_UPDATE_GET_STATE_CHANNEL),
+    onState: (listener) => {
+      const wrapped = (_event: Electron.IpcRendererEvent, state: Parameters<typeof listener>[0]) =>
+        listener(state);
+      ipcRenderer.on(IpcChannels.FORK_LIVE_UPDATE_STATE_CHANNEL, wrapped);
+      return () => ipcRenderer.removeListener(IpcChannels.FORK_LIVE_UPDATE_STATE_CHANNEL, wrapped);
+    },
+    restart: (version) => ipcRenderer.invoke(IpcChannels.FORK_LIVE_UPDATE_RESTART_CHANNEL, version),
+  },
   getUpdateState: () => ipcRenderer.invoke(IpcChannels.UPDATE_GET_STATE_CHANNEL),
   setUpdateChannel: (channel, minimumVersion) =>
     ipcRenderer.invoke(IpcChannels.UPDATE_SET_CHANNEL_CHANNEL, { channel, minimumVersion }),

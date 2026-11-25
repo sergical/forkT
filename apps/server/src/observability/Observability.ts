@@ -17,6 +17,7 @@ import * as ResourceAttribution from "../resourceTelemetry/ResourceAttribution.t
 import * as ServerLogger from "../serverLogger.ts";
 import * as BrowserTraceCollector from "./BrowserTraceCollector.ts";
 import * as HeapAttribution from "./HeapAttribution.ts";
+import * as ForkTraceSampler from "./ForkTraceSampler.ts";
 import * as OtlpExportFailures from "./OtlpExportFailures.ts";
 
 export const layer = Layer.unwrap(
@@ -62,7 +63,12 @@ export const layer = Layer.unwrap(
                 exportInterval: `${traces.exportIntervalMs} millis`,
                 headers: traces.headers,
                 resource,
-              }).pipe(Effect.provide(OtlpExportFailures.layer("traces")));
+              }).pipe(
+                Effect.provide(OtlpExportFailures.layer("traces")),
+                Effect.map((otlp) =>
+                  config.forkSentry?.sampleTraces ? ForkTraceSampler.make(otlp) : otlp,
+                ),
+              );
 
         const tracer = yield* makeLocalFileTracer({
           filePath: config.serverTracePath,

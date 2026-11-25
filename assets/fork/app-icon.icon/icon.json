@@ -1,0 +1,25 @@
+{
+  "fill-specializations": [
+    { "value": { "solid": "srgb:0.77647,0.83137,1.00000,1.00000" } },
+    { "appearance": "dark", "value": { "solid": "srgb:0.09020,0.09804,0.12157,1.00000" } }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "fill-specializations": [
+            { "value": { "solid": "srgb:0.09020,0.13725,0.25098,1.00000" } },
+            { "appearance": "dark", "value": { "solid": "srgb:0.77647,0.83137,1.00000,1.00000" } }
+          ],
+          "glass": true,
+          "image-name": "glyph.svg",
+          "name": "Branch T",
+          "position": { "scale": 0.9, "translation-in-points": [0, 0] }
+        }
+      ],
+      "shadow": { "kind": "neutral", "opacity": 0.5 },
+      "translucency": { "enabled": true, "value": 0.5 }
+    }
+  ],
+  "supported-platforms": { "circles": ["watchOS"], "squares": "shared" }
+}

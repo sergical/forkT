@@ -5,6 +5,7 @@
  * harness capture supplies the prompt and native tools; a cheap model plays the shell. See
  * README.md for how to run it and add cases.
  */
+import { forkCoordinatorInstructions } from "../../apps/server/src/project/forkCoordinatorInstructions.ts";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeUtil from "node:util";
@@ -73,6 +74,7 @@ import { MessageToolkit } from "../../apps/server/src/mcp/toolkits/message/tools
 import { OrchestratorToolkit } from "../../apps/server/src/mcp/toolkits/orchestrator/tools.ts";
 import { PreviewToolkit } from "../../apps/server/src/mcp/toolkits/preview/tools.ts";
 import { PreviewControlsToolkit } from "../../apps/server/src/mcp/toolkits/previewControls/tools.ts";
+import { MemoryToolkit } from "../../apps/server/src/mcp/toolkits/memory/tools.ts";
 import { ProjectToolkit } from "../../apps/server/src/mcp/toolkits/project/tools.ts";
 import {
   CHILD_PULL_REQUEST_REPORT_NEXT,
@@ -347,6 +349,7 @@ export const McpToolUseCase = Schema.Struct({
   rule: Schema.optional(Schema.String),
   privacy: Schema.optional(Schema.Literals(["commit-safe", "private"])),
   setup: Schema.Struct({
+    mainCoordinator: Schema.optional(Schema.Boolean),
     role: Schema.Literals(["top", "delegated-child", "native-subagent"]),
     /** Runs only on this harness, for cases whose right answer depends on it. */
     harness: Schema.optional(Schema.Literals(["claude", "codex"])),
@@ -501,6 +504,7 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
   ThreadToolkit,
   AttachmentToolkit,
   ProjectToolkit,
+  MemoryToolkit,
   EnvironmentToolkit,
   ThemeToolkit,
   FeedbackToolkit,
@@ -1211,6 +1215,7 @@ export const buildMessages = (sample: Sample) => {
         });
   const native = role === "native-subagent";
   const notes = [
+    testCase.setup.mainCoordinator ? forkCoordinatorInstructions(true) : undefined,
     native
       ? "You are a subagent started by the parent agent's Agent tool. Your final message goes to the parent agent, not to the user."
       : undefined,

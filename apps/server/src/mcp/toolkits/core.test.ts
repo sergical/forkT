@@ -1,3 +1,4 @@
+import { ForkCoordinatorService } from "../../project/ForkCoordinatorService.ts";
 import * as AssetSigner from "../../assets/AssetSigner.ts";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -346,15 +347,30 @@ const fullAccessThreadId = ThreadId.make("mcp-core-full-access-thread");
 it.effect("returns an HTML render reference that Codex and Claude tool rows both carry", () =>
   Effect.gen(function* () {
     const server = yield* McpServer.McpServer;
-    const result = yield* server
-      .callTool({
-        name: "html_render",
-        arguments: { html: "<p>Revenue</p>", title: "Revenue", height: 240 },
-      })
-      .pipe(
-        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
-        Effect.provideService(McpSchema.McpServerClient, client),
-      );
+    const main = {
+      ...scope,
+      thread: { ...scope.thread!, threadId: ThreadId.make("fork:global:1") },
+    };
+    const renderInMain = (args: Record<string, unknown>) =>
+      server
+        .callTool({ name: "html_render", arguments: args })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, main),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+    // Recorded scratch landing-page call, with the private path and title anonymized.
+    const scratch = yield* renderInMain({
+      path: "/scratch/reports/landing page draft.html",
+      title: "Acme landing page · private draft",
+      height: 632,
+    });
+    expect(declaredFailure(scratch)?.code).toBe("invalid_request");
+    const result = yield* renderInMain({
+      intent: { kind: "inline" },
+      html: "<p>Revenue</p>",
+      title: "Revenue",
+      height: 240,
+    });
     const reference = htmlRenderFromToolItem({
       toolName: "t3-code.html_render",
       output: result.structuredContent,
@@ -387,6 +403,7 @@ it.effect("returns an HTML render reference that Codex and Claude tool rows both
   }).pipe(
     Effect.provide(
       McpHttpServer.layerHtmlToolkit.pipe(
+        Layer.provide(Layer.mock(ForkCoordinatorService)({})),
         Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
         Layer.provide(McpProviderSessions.layer),
         Layer.provide(PreviewBrowser.layer),

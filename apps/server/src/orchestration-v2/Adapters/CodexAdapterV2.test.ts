@@ -3402,9 +3402,14 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 item: {
                   type: "agentMessage",
                   id: "async-question-item",
-                  text: "Which branch?",
+                  text: "The final checks passed and the release candidate is ready.",
                   delivery: "async",
-                  questions: [{ title: "Which branch?", options: ["main", "dev"] }],
+                  questions: [
+                    {
+                      title: "Approve the release candidate?",
+                      options: ["Approve", "Request changes"],
+                    },
+                  ],
                 },
               },
             },
@@ -3462,7 +3467,11 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       ) {
         assert.deepEqual(
           questionItem.turnItem.questions[0]?.options.map((option) => option.label),
-          ["main", "dev"],
+          ["Approve", "Request changes"],
+        );
+        assert.equal(
+          questionItem.turnItem.questions[0]?.question,
+          "Approve the release candidate?\n\nThe final checks passed and the release candidate is ready.",
         );
         assert.equal(questionItem.turnItem.responseMode, "message");
       }

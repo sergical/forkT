@@ -12,6 +12,7 @@ import * as Electron from "electron";
 import { msg } from "gt-i18n";
 
 import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopClerk from "../app/DesktopClerk.ts";
@@ -43,6 +44,8 @@ import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import { m } from "../i18n/messages.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
+import { resolveForkPendingUpdatePaths } from "../updates/forkPendingUpdate.ts";
+import { forkRestartReadiness } from "../updates/forkRestartReadiness.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
 import { copyContextMenuImage } from "./ContextMenuImage.ts";
 import { installMainWindowRemoteRequestHeaderPolicy } from "./RemoteRequestHeaders.ts";
@@ -397,6 +400,41 @@ export const make = Effect.gen(function* () {
   const clientSettings = yield* DesktopClientSettings.DesktopClientSettings;
   const electronApp = yield* ElectronApp.ElectronApp;
   const rendererHistory = yield* DesktopRendererHistory.DesktopRendererHistory;
+  const forkUpdatePaths = resolveForkPendingUpdatePaths(
+    environment,
+    yield* HostProcess.Environment,
+  );
+  const forkRestart = forkUpdatePaths
+    ? forkRestartReadiness(forkUpdatePaths.stateDir, yield* HostProcess.Arguments)
+    : undefined;
+  let readyBackendUrl: URL | undefined;
+  const loadedMainWindows = new WeakSet<Electron.BrowserWindow>();
+  const markForkRestartReady = Effect.fn("desktop.window.markForkRestartReady")(function* (
+    window: Electron.BrowserWindow,
+  ) {
+    if (
+      !forkRestart ||
+      !readyBackendUrl ||
+      !loadedMainWindows.has(window) ||
+      window.isDestroyed() ||
+      !window.isVisible() ||
+      (yield* Ref.get(desktopState.quitting))
+    )
+      return;
+    const backend = readyBackendUrl;
+    const route = forkRestart.route();
+    const marked = yield* Effect.tryPromise({
+      try: () => forkRestart.markReady(backend),
+      catch: String,
+    }).pipe(
+      Effect.catch((cause) =>
+        logWindowWarning("could not write fork restart readiness", { cause }).pipe(
+          Effect.as(false),
+        ),
+      ),
+    );
+    if (marked) yield* logWindowInfo("fork restart window ready", { route, backend: backend.href });
+  });
   const backendReadyRef = yield* Ref.make(false);
   let backendHasStarted = false;
   let mainClosedDuringStartup = false;
@@ -902,7 +940,10 @@ export const make = Effect.gen(function* () {
       if (window.isDestroyed()) {
         return;
       }
-      void window.loadURL(applicationUrl).catch(() => undefined);
+      const route = forkRestart?.route();
+      void window
+        .loadURL(route ? `${applicationUrl}#${route}` : applicationUrl)
+        .catch(() => undefined);
     };
     const scheduleDevelopmentLoadRetry = () => {
       if (developmentLoadRetryFiber !== undefined || window.isDestroyed()) {
@@ -943,6 +984,10 @@ export const make = Effect.gen(function* () {
       clearDevelopmentLoadRetry();
       developmentLoadRetryIndex = 0;
       if (environment.platform === "darwin") syncMacosWindowButtons(window);
+      if (forkRestart) {
+        loadedMainWindows.add(window);
+        runFork(markForkRestartReady(window));
+      }
     });
     window.webContents.on(
       "did-fail-load",
@@ -1037,6 +1082,7 @@ export const make = Effect.gen(function* () {
       if (persistedSettings.mainWindowMaximized) window.maximize();
       yield* electronWindow.reveal(window);
       yield* dismissConnectingSplash;
+      if (forkRestart) yield* markForkRestartReady(window);
     });
     pendingMainReveals.set(window, revealWhenReady);
     bindFirstRevealTrigger(revealSubscribers, () => {
@@ -1231,11 +1277,21 @@ export const make = Effect.gen(function* () {
     showConnectingSplash,
     handleBackendReady: Effect.fn("desktop.window.handleBackendReady")(function* (httpBaseUrl) {
       backendHasStarted = true;
+      readyBackendUrl = httpBaseUrl;
       yield* Ref.set(backendReadyRef, true);
       yield* logWindowInfo("backend ready", { source: "http", url: httpBaseUrl.href });
       if (!mainClosedDuringStartup) yield* createMainIfBackendReady;
+      if (forkRestart) {
+        const window = yield* electronWindow.main;
+        if (Option.isSome(window)) yield* markForkRestartReady(window.value);
+      }
     }),
     handleBackendNotReady: Ref.set(backendReadyRef, false).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          readyBackendUrl = undefined;
+        }),
+      ),
       Effect.withSpan("desktop.window.handleBackendNotReady"),
     ),
     flushMainWindowBounds: Effect.suspend(() => flushMainWindowBounds).pipe(

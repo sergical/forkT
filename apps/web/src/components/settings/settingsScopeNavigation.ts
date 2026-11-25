@@ -4,7 +4,10 @@ import { validateSettingsScopeSearch, type SettingsScopeSearch } from "./setting
 
 export function validateSettingsRouteSearch(raw: Record<string, unknown>) {
   return validateSettingsScopeSearch(
-    typeof raw.environmentId === "string" && raw.machine === undefined && raw.project === undefined
+    typeof raw.environmentId === "string" &&
+      raw.memory === undefined &&
+      raw.machine === undefined &&
+      raw.project === undefined
       ? { ...raw, machine: raw.environmentId }
       : raw,
   );

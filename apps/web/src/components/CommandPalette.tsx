@@ -63,6 +63,7 @@ import {
   ArrowLeftIcon,
   BugIcon,
   ChartNoAxesColumnIcon,
+  BookMarkedIcon,
   CheckIcon,
   ChevronRightIcon,
   CornerLeftUpIcon,
@@ -123,6 +124,7 @@ import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
+import { useMemoryPaletteItems } from "./fork/useMemoryPaletteItems";
 import { serverEnvironment } from "../state/server";
 import { threadEnvironment } from "../state/threads";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
@@ -972,6 +974,7 @@ function OpenCommandPaletteDialog(props: {
     isSearchPending: isThreadSearchPending,
     isSearchFailed: isThreadSearchFailed,
   } = useCommandPaletteThreadItems({ activeThread: activeThread ?? null, threadSearchQuery });
+  const memoryItems = useMemoryPaletteItems(threadSearchQuery);
   // Recent means used recently: written in or opened, whichever is later. The
   // open thread would always lead that list, so it is left out.
   const activeThreadValue = activeThread
@@ -1771,13 +1774,28 @@ function OpenCommandPaletteDialog(props: {
 
   actionItems.push({
     kind: "action",
+    value: "action:memories",
+    searchTerms: ["memories", "memory", "preferences", "decisions", "lessons"],
+    title: gt("Memories"),
+    icon: <BookMarkedIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({
+        to: "/settings/memories",
+        search: {},
+        state: (previous) => ({ ...previous, memoriesReset: (previous.memoriesReset ?? 0) + 1 }),
+      });
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
     value: "action:usage",
     searchTerms: ["usage", "use", "tokens", "cost", "spend", "limits", "stats", "analytics"],
     title: gt("Open usage"),
     icon: <ChartNoAxesColumnIcon className={ITEM_ICON_CLASS} />,
     shortcutCommand: "usage.open",
     run: async () => {
-      await navigate({ to: "/usage" });
+      await navigate({ to: "/settings/usage" });
     },
   });
 
@@ -1969,7 +1987,7 @@ function OpenCommandPaletteDialog(props: {
     messages,
   );
   // Jump shortcuts number the project rows as shown, so a pin cannot move a number to another row.
-  const filteredGroups = searchedGroups.map((group) => {
+  const numberedGroups = searchedGroups.map((group) => {
     if (group.value !== NEW_THREAD_IN_GROUP) return group;
     const jumpItems = new Map(
       enumerateCommandPaletteItems(
@@ -1983,6 +2001,17 @@ function OpenCommandPaletteDialog(props: {
     );
     return { ...group, items: group.items.map((item) => jumpItems.get(item.value) ?? item) };
   });
+  // Found memories follow every ranked group, so "Memories" stays first for "mem", and lead
+  // the message matches: a matching title is the stronger hit.
+  const messagesAt = numberedGroups.findIndex((group) => group.value === "threads-messages");
+  const filteredGroups =
+    memoryItems.length === 0 || isLinkedThreadSearch
+      ? numberedGroups
+      : numberedGroups.toSpliced(messagesAt === -1 ? numberedGroups.length : messagesAt, 0, {
+          value: "memories-search",
+          label: gt("Memories"),
+          items: memoryItems,
+        });
 
   const handleAddProjectForEnvironment = async (input: {
     readonly environmentId: EnvironmentId;

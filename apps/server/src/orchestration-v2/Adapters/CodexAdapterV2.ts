@@ -6206,6 +6206,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }
 
             if (payload.item.delivery === "async" && payload.item.questions?.length) {
+              const resultContext = payload.item.text.trim();
               const artifacts = yield* buildUserInputRequestArtifacts({
                 context,
                 nativeItemId: payload.item.id,
@@ -6214,7 +6215,10 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 questions: payload.item.questions.map((question, index) => ({
                   id: String(index),
                   header: "Question",
-                  question: question.title,
+                  question:
+                    index === 0 && resultContext !== "" && resultContext !== question.title
+                      ? `${question.title}\n\n${resultContext}`
+                      : question.title,
                   options: (question.options ?? []).map((label) => ({ label, description: "" })),
                 })),
               });

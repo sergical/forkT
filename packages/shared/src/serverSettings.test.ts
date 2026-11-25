@@ -33,6 +33,20 @@ const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 
 const FOLDED_SERVER_SETTINGS = { ...DEFAULT_SERVER_SETTINGS, projectSettingsFolded: true };
 
+it("edits coordinator account access without clearing driver exclusions", () => {
+  const settings = decodeServerSettings({
+    forkCoordinatorRouting: { excludedDrivers: ["claude"], excludedInstances: ["codex"] },
+  });
+  const patch = decodeServerSettingsPatch({
+    forkCoordinatorAccountAccess: { instanceId: "codex", allowed: true },
+  });
+
+  expect(applyServerSettingsPatch(settings, patch).forkCoordinatorRouting).toEqual({
+    excludedDrivers: ["claude"],
+    excludedInstances: [],
+  });
+});
+
 describe("fallbackTextGenerationModelSelection", () => {
   it("uses Big Pickle when only OpenCode is enabled", () => {
     expect(

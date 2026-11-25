@@ -254,6 +254,8 @@ import {
   readTailscaleServeRoutesTo,
   readTailscaleStatus,
 } from "@t3tools/tailscale";
+import * as ErrorReporter from "effect/ErrorReporter";
+import * as ForkSentry from "./observability/ForkSentry.ts";
 import * as ServerActivation from "./serverActivation.ts";
 
 // Escaped MCP handoff provenance can exceed find-my-way's 100-character segment default.
@@ -265,6 +267,8 @@ const HTTP_ROUTER_CONFIG = {
 const HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS = 0;
 const layerResourceAttribution = ResourceAttribution.layer;
 const layerApplicationObservability = EventLoopMonitor.layer.pipe(
+  Layer.provideMerge(ForkSentry.layer),
+  Layer.provideMerge(ErrorReporter.layer([ForkSentry.reporter], { mergeWithExisting: true })),
   Layer.provideMerge(Observability.layer),
   Layer.provideMerge(layerResourceAttribution),
 );

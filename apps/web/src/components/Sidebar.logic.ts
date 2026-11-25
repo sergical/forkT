@@ -21,6 +21,8 @@ import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/sh
 import {
   type ContextMenuItem,
   type EnvironmentId,
+  forkSidebarThreadRole,
+  isForkCoordinatorThreadId,
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
   type ThreadId,
@@ -283,6 +285,21 @@ export function resolveSidebarDropTarget(
   return { section, pinnedOrder, activeOrder };
 }
 
+/** Folder pins can move only over another ordinary pin in the same project. */
+export function reorderSidebarFolderPins(
+  pins: readonly string[],
+  activeKey: string,
+  overKey: string,
+): string[] | null {
+  const from = pins.indexOf(activeKey);
+  const to = pins.indexOf(overKey);
+  if (from < 0 || to < 0 || from === to) return null;
+  const order = [...pins];
+  order.splice(from, 1);
+  order.splice(to, 0, activeKey);
+  return order;
+}
+
 type SidebarThreadDropPlan =
   | { readonly kind: "none" }
   | {
@@ -355,6 +372,7 @@ export function resolveSidebarReorderableThreadKeys(input: {
   for (const thread of input.threads) {
     // Config is cached for offline rendering, so its presence does not make a row writable.
     if (
+      isForkCoordinatorThreadId(thread.id) ||
       !connectedEnvironmentIds.has(thread.environmentId) ||
       !input.serverConfigs.has(thread.environmentId)
     ) {
@@ -1072,7 +1090,8 @@ export function sidebarFolderExpansionKeys(group: {
 
 /**
  * Boring sidebar folders. Folders follow `groups` order and threads keep their
- * input order. A project with no threads gets a folder only when `keepEmpty` says so.
+ * input order, except that a T3 fork project coordinator leads its folder.
+ * A project with no threads gets a folder only when `keepEmpty` says so.
  * A thread whose project is in no group has no folder and is left out.
  */
 export function groupSidebarThreadsByProject<
@@ -1082,7 +1101,10 @@ export function groupSidebarThreadsByProject<
       readonly projectId: string;
     }>;
   },
-  TThread extends Pick<SidebarThreadSummary, "environmentId" | "projectId">,
+  TThread extends Pick<SidebarThreadSummary, "environmentId" | "projectId"> & {
+    readonly id: string;
+    readonly pinnedAt?: string | null;
+  },
 >(
   groups: readonly TGroup[],
   threads: readonly TThread[],
@@ -1095,10 +1117,54 @@ export function groupSidebarThreadsByProject<
       folderByProject.set(`${ref.environmentId}:${ref.projectId}`, folder);
     }
   }
-  for (const thread of threads) {
+  const place = (thread: TThread) =>
     folderByProject.get(`${thread.environmentId}:${thread.projectId}`)?.threads.push(thread);
+  for (const role of ["coordinator", "pinned", "thread"] as const) {
+    for (const thread of threads) if (forkSidebarThreadRole(thread) === role) place(thread);
   }
   return folders.filter((folder) => folder.threads.length > 0 || keepEmpty(folder.group));
+}
+
+/**
+ * Boring sidebar folders with their open state. A closed folder shows only the open
+ * thread; its header counts the rest, which are exactly the rows opening it reveals.
+ */
+export function buildSidebarProjectFolders<
+  TGroup extends {
+    readonly memberProjectRefs: ReadonlyArray<{
+      readonly environmentId: EnvironmentId;
+      readonly projectId: string;
+    }>;
+  },
+  TThread extends Pick<SidebarThreadSummary, "environmentId" | "id" | "projectId" | "pinnedAt">,
+>(input: {
+  readonly groups: readonly TGroup[];
+  readonly activeThreads: readonly TThread[];
+  readonly keepEmpty: (group: TGroup) => boolean;
+  readonly isCollapsed: (group: TGroup) => boolean;
+  readonly routeRowThreadKey: string | null;
+}): Array<{
+  group: TGroup;
+  collapsed: boolean;
+  threads: readonly TThread[];
+  hiddenThreads: readonly TThread[];
+}> {
+  const isVisibleWhenCollapsed = (thread: TThread) =>
+    forkSidebarThreadRole(thread) !== "coordinator" &&
+    scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === input.routeRowThreadKey;
+  return groupSidebarThreadsByProject(input.groups, input.activeThreads, input.keepEmpty).map(
+    (folder) => {
+      const collapsed = input.isCollapsed(folder.group);
+      return {
+        group: folder.group,
+        collapsed,
+        threads: collapsed ? folder.threads.filter(isVisibleWhenCollapsed) : folder.threads,
+        hiddenThreads: collapsed
+          ? folder.threads.filter((thread) => !isVisibleWhenCollapsed(thread))
+          : [],
+      };
+    },
+  );
 }
 
 export type SidebarV2TopStatusKind =

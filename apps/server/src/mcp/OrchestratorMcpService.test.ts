@@ -1674,6 +1674,198 @@ describe("OrchestratorMcpService provider resolution", () => {
     turnItems: [],
   } as unknown as OrchestrationV2ThreadProjection;
 
+  it.effect.each(["main", "project", "nested", "manual"] as const)(
+    "dispatches the selected account from %s with the fork policy",
+    (source) =>
+      Effect.gen(function* () {
+        const claude = ProviderInstanceId.make("claudeAgent");
+        const codex = codexInstanceId;
+        const model = "gpt-6-2-sol";
+        const reviewModel = "gpt-6-2-astra";
+        const claudeModel = "claude-fable-5-2";
+        const projectCoordinatorId = ThreadId.make(`fork:project:${projectId}:1`);
+        const coordinatorId =
+          source === "main" ? ThreadId.make("fork:global:1") : projectCoordinatorId;
+        const callerId = source === "main" || source === "project" ? coordinatorId : parentThreadId;
+        const rootThreadId = source === "nested" ? coordinatorId : callerId;
+        const caller = { ...scope, thread: { ...scope.thread!, threadId: callerId } };
+        const inputProjection = parentProjection([]);
+        const thread = {
+          ...inputProjection.thread,
+          id: callerId,
+          lineage: {
+            rootThreadId,
+            parentThreadId: source === "nested" ? ThreadId.make("nested-parent") : null,
+            relationshipToParent: source === "nested" ? ("subagent" as const) : null,
+          },
+        };
+        const task = {
+          id: taskId,
+          threadId: callerId,
+          origin: "app_owned",
+          childThreadId,
+          providerInstanceId: source === "manual" ? claude : codex,
+          model: source === "manual" ? claudeModel : source === "nested" ? reviewModel : model,
+          status: "running",
+          result: null,
+        };
+        const selections: Array<unknown> = [];
+        const checkedAt = "1970-01-01T00:00:00.000Z";
+        const codexSnapshot = providerSnapshot({
+          instanceId: codex,
+          driver: ProviderDriverKind.make("codex"),
+          model,
+        });
+        const providers: ServerProvider[] = [
+          {
+            ...codexSnapshot,
+            auth: { status: "authenticated", label: "ChatGPT Pro 200" },
+            models: [
+              ...codexSnapshot.models,
+              { slug: reviewModel, name: reviewModel, isCustom: false, capabilities: null },
+            ],
+            usageLimits: {
+              checkedAt,
+              windows: [
+                {
+                  id: "secondary",
+                  kind: "weekly",
+                  label: "Weekly",
+                  usedPercent: 46,
+                  resetsAt: "1970-01-04T04:00:00.000Z",
+                },
+              ],
+            },
+          },
+          {
+            ...providerSnapshot({
+              instanceId: claude,
+              driver: ProviderDriverKind.make("claudeAgent"),
+              model: claudeModel,
+            }),
+            auth: { status: "authenticated", label: "Claude Ultra" },
+            usageLimits: {
+              checkedAt,
+              windows: [
+                {
+                  id: "seven_day",
+                  kind: "weekly",
+                  label: "Weekly",
+                  usedPercent: 96,
+                  resetsAt: "1970-01-04T10:00:00.000Z",
+                },
+                {
+                  id: "seven_day_fable",
+                  kind: "weekly",
+                  label: "Weekly · Fable",
+                  usedPercent: 77,
+                  resetsAt: "1970-01-04T10:00:00.000Z",
+                },
+              ],
+            },
+          },
+        ];
+        const dependencies = Layer.mergeAll(
+          NodeServices.layer,
+          NodeCrypto.layer,
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            hasReceipt: () => Effect.succeed(false),
+            getThreadRecords: (threadId) =>
+              Effect.succeed(
+                threadId === callerId
+                  ? ({
+                      ...inputProjection,
+                      thread,
+                      subagents: selections.length > 0 ? [task] : [],
+                    } as never)
+                  : childProjection,
+              ),
+            dispatch: (command) =>
+              Effect.sync(() => {
+                if (command.type === "delegated_task.request")
+                  selections.push(command.modelSelection);
+                return {
+                  sequence: 1,
+                  storedEvents: [{ event: { type: "subagent.updated", payload: task } }],
+                } as never;
+              }),
+          }),
+          ServerSettings.layerTest({
+            forkCoordinatorRouting: {
+              excludedDrivers: [ProviderDriverKind.make("claude")],
+              excludedInstances: [],
+            },
+          }),
+          Layer.mock(ProviderRegistry.ProviderRegistry)({
+            getProviders: Effect.succeed(providers),
+            refreshInstance: () =>
+              Effect.die("Routing capabilities should only read cached usage."),
+            refreshWorkspaceSnapshot: () =>
+              Effect.die("Routing capabilities should only read cached catalogs."),
+          }),
+          adapterRegistryLayer([codex, claude]),
+          Layer.mock(ProjectService.ProjectService)({
+            getById: () =>
+              source === "manual"
+                ? Effect.succeedNone
+                : Effect.succeedSome({ workspaceRoot: "/project" } as never),
+          }),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        );
+        yield* Effect.gen(function* () {
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          const role = source === "nested" ? ("review" as const) : ("implementation" as const);
+          const capability = yield* service.capabilities(caller, { role });
+          const explicit = { providerInstanceId: claude, model: claudeModel };
+          if (source === "manual") {
+            assert.isUndefined(capability.routing);
+          } else {
+            assert.deepEqual(capability.routing?.selection, {
+              instanceId: codex,
+              model: task.model,
+            });
+            assert.deepEqual(
+              capability.providers.find((p) => p.providerInstanceId === claude)?.routingUsage,
+              {
+                state: "excluded",
+                checkedAt,
+                planLabel: "Claude Ultra",
+                windows: [
+                  { label: "Weekly", remainingPercent: 4, resetsAt: "1970-01-04T10:00:00.000Z" },
+                  {
+                    label: "Weekly · Fable",
+                    remainingPercent: 23,
+                    resetsAt: "1970-01-04T10:00:00.000Z",
+                    modelScope: "Fable",
+                  },
+                ],
+              },
+            );
+            assert.strictEqual(
+              capability.providers.find((p) => p.providerInstanceId === codex)?.routingUsage
+                ?.planLabel,
+              "ChatGPT Pro 200",
+            );
+            const refused = yield* service
+              .delegateTask(caller, { task: "Review", target: explicit })
+              .pipe(Effect.flip);
+            assert.strictEqual(refused.code, "provider_unavailable");
+            assert.deepEqual(selections, []);
+          }
+          yield* service.delegateTask(caller, {
+            task: "Check the change",
+            role,
+            ...(source === "manual" ? { target: explicit } : {}),
+          });
+          assert.deepEqual(selections, [
+            { instanceId: task.providerInstanceId, model: task.model },
+          ]);
+        }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(dependencies))));
+      }),
+  );
+
   it.effect.each([
     "parent completion",
     "nested child completion",

@@ -85,6 +85,8 @@ export class ServerConfig extends Context.Service<
     readonly otlpLogsSource?: OtlpEndpointSource;
     readonly otlpLogsVariable?: string;
     readonly otelEnvironment: OtelEnvironment.OtelEnvironment;
+    /** T3 fork: set in packaged builds. `sampleTraces` when traces go to the fork's Sentry project. */
+    readonly forkSentry?: { readonly sampleTraces: boolean };
     readonly mode: RuntimeMode;
     readonly port: number;
     readonly host: string | undefined;

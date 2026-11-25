@@ -70,6 +70,9 @@ import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
 import * as EnvironmentHandlers from "./toolkits/environment/handlers.ts";
 import { ThemeToolkit } from "./toolkits/theme/tools.ts";
 import * as ThemeHandlers from "./toolkits/theme/handlers.ts";
+import * as ForkLayer from "../project/forkLayer.ts";
+import { MemoryToolkit } from "./toolkits/memory/tools.ts";
+import * as MemoryHandlers from "./toolkits/memory/handlers.ts";
 import { ProjectToolkit } from "./toolkits/project/tools.ts";
 import * as ProjectHandlers from "./toolkits/project/handlers.ts";
 import { AttachmentToolkit } from "./toolkits/attachment/tools.ts";
@@ -1514,6 +1517,7 @@ export const layerTools = Layer.mergeAll(
   layerWorkflowToolkit,
   layerAttachmentToolkit,
   layerProjectRegistration,
+  toolkitRegistration(MemoryToolkit, MemoryHandlers.layer),
   layerFeedbackToolkit,
   layerEnvironmentToolkit,
   layerThemeToolkit,
@@ -1637,4 +1641,4 @@ export const layerMilestoneEvents = Layer.effectDiscard(
 
 export const layer = layerMcpTransport(
   Layer.mergeAll(layerTools, layerToolSearch, layerMilestoneEvents),
-);
+).pipe(Layer.provide(ForkLayer.layer));

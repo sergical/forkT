@@ -128,7 +128,7 @@ function readInitialThreadSidebarWidth(): number {
 }
 
 function readUsagePageOpen(router: AnyRouter) {
-  return router.state.location.pathname === "/usage";
+  return router.state.location.pathname === "/settings/usage";
 }
 
 function isKeybindingCaptureTarget(event: KeyboardEvent) {
@@ -317,7 +317,9 @@ function registerAppShellCommands(router: AnyRouter, shellElement: Element): () 
 function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
   const gt = useGT();
   const router = useRouter();
-  const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
+  const usagePageOpen = useLocation({
+    select: (location) => location.pathname === "/settings/usage",
+  });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { toggleSidebar } = useSidebar();
   const mobileSidebarSheetMounted = useMobileSidebarSheetMounted();

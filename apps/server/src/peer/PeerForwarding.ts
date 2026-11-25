@@ -1,3 +1,5 @@
+import { isForkRoutingThread } from "../project/forkCoordinatorRouting.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import {
   type EnvironmentId,
   OrchestratorMcpFailure,
@@ -117,6 +119,7 @@ const make = Effect.gen(function* () {
   const links = yield* PeerLinks.PeerLinks;
   const crypto = yield* Digest.Digest;
   const threads = yield* ThreadManagement.ThreadManagementService;
+  const settings = yield* ServerSettings.ServerSettingsService;
 
   /**
    * The caller's own limits and thread, which travel with every forwarded call: the peer sees only the
@@ -174,6 +177,24 @@ const make = Effect.gen(function* () {
     params: unknown,
   ) {
     const { caller, limits } = yield* forwardingCaller(scope);
+    const startsWork =
+      toolName === "t3_thread_launch" ||
+      toolName === "t3_thread_send" ||
+      toolName === "schedule_task" ||
+      toolName === "write_pull_request_guides";
+    if (
+      startsWork &&
+      caller !== undefined &&
+      isForkRoutingThread(caller) &&
+      (yield* settings.getSettings.pipe(Effect.mapError(unavailable))).forkCoordinatorRouting !==
+        undefined
+    ) {
+      return yield* new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message:
+          "Fork subscription routing can verify accounts only in this environment. Choose a local target.",
+      });
+    }
     const encoded = (yield* Schema.encodeUnknownEffect(parameters as Schema.Encoder<unknown>)(
       params,
     ).pipe(Effect.mapError(unavailable))) as Record<string, unknown>;

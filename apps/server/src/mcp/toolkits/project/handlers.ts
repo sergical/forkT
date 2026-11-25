@@ -1,3 +1,10 @@
+import * as Clock from "effect/Clock";
+import {
+  forkRoutedThreadId,
+  isForkRoutingThread,
+  recommendForkRoute,
+  refreshForkRoutingProviders,
+} from "../../../project/forkCoordinatorRouting.ts";
 import {
   CommandId,
   MessageId,
@@ -232,7 +239,34 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           input.clientRequestId === undefined
             ? yield* newCommandId()
             : yield* launchCommandId(scope.requestNamespace, input.clientRequestId);
-        const threadId = ThreadId.make(commandId);
+        const forkSettings =
+          caller !== undefined && isForkRoutingThread(caller)
+            ? yield* ServerSettings.ServerSettingsService.use(
+                (settings) => settings.getSettings,
+              ).pipe(Effect.mapError(unavailable))
+            : undefined;
+        const plainThreadId = ThreadId.make(commandId);
+        const routedThreadId = forkRoutedThreadId(plainThreadId);
+        const previousPlainThread =
+          forkSettings === undefined || input.clientRequestId === undefined
+            ? null
+            : yield* context.threads
+                .getThreadShell(plainThreadId)
+                .pipe(Effect.mapError(unavailable));
+        const previousRoutedThread =
+          forkSettings === undefined ||
+          input.clientRequestId === undefined ||
+          previousPlainThread !== null
+            ? null
+            : yield* context.threads
+                .getThreadShell(routedThreadId)
+                .pipe(Effect.mapError(unavailable));
+        const forkRouting =
+          forkSettings?.forkCoordinatorRouting === undefined ? undefined : forkSettings;
+        const threadId =
+          previousPlainThread?.id ??
+          previousRoutedThread?.id ??
+          (forkRouting === undefined ? plainThreadId : routedThreadId);
         const messageId = MessageId.make(commandId);
         const attachments = input.attachments ?? [];
         if (input.generateTitle === true && !input.message?.trim() && attachments.length === 0)
@@ -417,7 +451,42 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
         // project's effective defaults, as the composer does. Its mode stays
         // within the ceiling it was approved with.
         const projectDefaults = caller === undefined ? projectSettings : undefined;
+        const routing =
+          forkRouting === undefined || replaying
+            ? undefined
+            : yield* Effect.gen(function* () {
+                const registry = yield* ProviderRegistry.ProviderRegistry;
+                const settings = resolveProjectSettings(forkRouting, projectId, project).settings;
+                const routingInput = {
+                  settings,
+                  projectId,
+                  providers: yield* registry.getProviders,
+                  defaultSelection:
+                    validatedModelSelection ??
+                    caller?.modelSelection ??
+                    settings.defaultModelSelection,
+                  fallbackSelection: settings.fallbackModelSelection,
+                  target:
+                    validatedModelSelection === undefined
+                      ? undefined
+                      : {
+                          providerInstanceId: validatedModelSelection.instanceId,
+                          model: validatedModelSelection.model,
+                        },
+                };
+                return recommendForkRoute({
+                  ...routingInput,
+                  providers: yield* refreshForkRoutingProviders(registry, routingInput),
+                  now: yield* Clock.currentTimeMillis,
+                });
+              });
+        if (routing?.selection === null)
+          return yield* new OrchestratorMcpFailure({
+            code: "provider_unavailable",
+            message: routing.reason,
+          });
         const modelSelection =
+          routing?.selection ??
           validatedModelSelection ??
           launchedModel ??
           caller?.modelSelection ??
@@ -460,8 +529,12 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           threadId,
           projectId,
           title: input.title,
-          ...(input.generateTitle === undefined ? {} : { generateTitle: input.generateTitle }),
-          ...(input.generateTitle === true ? {} : { titleRenamed: true }),
+          ...(forkRouting === undefined && input.generateTitle !== undefined
+            ? { generateTitle: input.generateTitle }
+            : {}),
+          ...(forkRouting !== undefined || input.generateTitle !== true
+            ? { titleRenamed: true }
+            : {}),
           modelSelection,
           runtimeMode: startedRuntimeMode,
           interactionMode,

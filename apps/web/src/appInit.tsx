@@ -1,3 +1,4 @@
+import { isForkMainCoordinatorThreadId } from "@t3tools/contracts";
 import {
   scopedThreadKey,
   scopeProjectRef,
@@ -178,7 +179,8 @@ function startDocumentTitle(router: AppRouter): void {
         primaryServerVersion:
           appAtomRegistry.get(primaryServerConfigAtom)?.environment.serverVersion ?? null,
       }),
-      projectTitle: project?.title ?? null,
+      projectTitle:
+        thread && isForkMainCoordinatorThreadId(thread.id) ? null : (project?.title ?? null),
       threadTitle: thread?.title ?? null,
       ...(getClientSettings().screenReaderWindowTitle && {
         screenReader: {

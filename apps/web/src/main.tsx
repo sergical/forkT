@@ -9,11 +9,13 @@ import { hasCloudPublicConfig } from "./cloud/publicConfig";
 import { isElectron } from "./env";
 import { startAppServices } from "./appInit";
 import { AppRoot } from "./AppRoot";
+import { forkSentryRootOptions, initForkSentry } from "./observability/forkSentry";
 import { whenLocaleReady } from "./i18n/runtime";
 import { chunkLoadState } from "./lib/chunkReloadGuard";
 
 const stopTrackingKeyboardLayout = trackKeyboardLayout();
 import.meta.hot?.dispose(stopTrackingKeyboardLayout);
+initForkSentry();
 
 const router = startAppServices();
 
@@ -37,7 +39,10 @@ export const startup = Promise.all([
   .then(([ManagedAuthShell]) => {
     // Route chunk failures resolve router.load() and surface later through the error boundary.
     if (chunkLoadState.reloadScheduled) return;
-    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    ReactDOM.createRoot(
+      document.getElementById("root") as HTMLElement,
+      forkSentryRootOptions,
+    ).render(
       <React.StrictMode>
         {ManagedAuthShell && clerkPublishableKey ? (
           <ManagedAuthShell publishableKey={clerkPublishableKey}>{app}</ManagedAuthShell>

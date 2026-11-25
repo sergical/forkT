@@ -13,7 +13,7 @@ import {
   runRanAfter,
   usageLimitBlockedRun,
 } from "@t3tools/shared/orchestrationV2ThreadError";
-import { threadIssueKeysEqual } from "@t3tools/contracts";
+import { isForkCoordinatorThreadId, threadIssueKeysEqual } from "@t3tools/contracts";
 import { canonicalizeGitCafePullRequestUrl } from "@t3tools/source-control-definitions/registry";
 import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
 import {
@@ -641,6 +641,19 @@ export function threadHasUnfinishedWork(records: {
     ) || records.runtimeRequests.some((request) => request.status === "pending")
   );
 }
+
+const coordinatorLifecycleCommands = new Set<OrchestrationV2ServerCommand["type"]>([
+  "thread.settle",
+  "thread.auto-settle",
+  "thread.auto-settle.set",
+  "thread.snooze",
+  "thread.archive",
+  "thread.delete",
+  "thread.pin",
+  "thread.unpin",
+  "thread.pin.reorder",
+  "thread.active.reorder",
+]);
 
 function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
   switch (command.type) {
@@ -16010,6 +16023,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       "orchestration_v2.command_type": command.type,
       "orchestration_v2.thread_id": commandThreadId(command),
     });
+
+    if (
+      coordinatorLifecycleCommands.has(command.type) &&
+      isForkCoordinatorThreadId(commandThreadId(command))
+    ) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Coordinator threads stay active and cannot be moved or removed.",
+      });
+    }
 
     const events = yield* Ref.make<Array<OrchestrationV2DomainEvent>>([]);
     const effects = yield* Ref.make<Array<PendingOrchestrationEffectV2>>([]);

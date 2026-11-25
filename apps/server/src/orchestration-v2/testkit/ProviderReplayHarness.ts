@@ -1,3 +1,6 @@
+import * as ProviderRegistryMock from "../../provider/testUtils/providerRegistryMock.ts";
+import * as ForkCoordinatorStore from "../../project/ForkCoordinatorStore.ts";
+import * as ForkMemoryService from "../../project/ForkMemoryService.ts";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -478,6 +481,9 @@ export function layerWithRegistry<Error>(
     ),
   );
   const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pipe(
+    Layer.provide(ProviderRegistryMock.layer([])),
+    Layer.provide(ForkMemoryService.layer.pipe(Layer.provide(layerDatabase))),
+    Layer.provide(ForkCoordinatorStore.layer.pipe(Layer.provide(layerDatabase))),
     Layer.provide(
       Layer.mergeAll(
         layerContextHandoffServiceProvided,

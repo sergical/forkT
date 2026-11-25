@@ -66,7 +66,6 @@ import {
 } from "../ui/menu";
 import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { AppRouteModal, AppRouteModalClose } from "../AppRouteModal";
 import { Skeleton } from "../ui/skeleton";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -174,8 +173,11 @@ function UsageModelDialogHost({
   );
 }
 
-export function UsagePage() {
-  const [preferences, setPreferences] = useState(readUsagePagePreferences);
+export function UsagePage({ showLimitsInitially = false }: { showLimitsInitially?: boolean } = {}) {
+  const [preferences, setPreferences] = useState(() => {
+    const saved = readUsagePagePreferences();
+    return showLimitsInitially ? { ...saved, metric: "limits" as const } : saved;
+  });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const hour12 = usePrimarySettings((settings) => resolveHour12(settings.timestampFormat));
   const gt = useGT();
@@ -372,12 +374,6 @@ export function UsagePage() {
   const topbarContent = (
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2 @4xl/usage-header:flex">
       <WorkspaceBreadcrumb ariaLabel={gt("Usage breadcrumb")} className="min-w-0">
-        <WorkspaceBreadcrumbItem>
-          <h1>
-            <T>Usage</T>
-          </h1>
-        </WorkspaceBreadcrumbItem>
-        <WorkspaceBreadcrumbSeparator />
         <WorkspaceBreadcrumbItem className="min-w-10 shrink">
           <UsageEnvironmentFilter
             environments={environments}
@@ -512,11 +508,13 @@ export function UsagePage() {
   );
 
   return (
-    <AppRouteModal label={gt("Usage")}>
+    <>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="@container/usage-header flex min-h-12 shrink-0 items-center gap-1 border-b ps-5 pe-2">
+        <header
+          id={showingLimits ? "limits" : "usage"}
+          className="@container/usage-header flex min-h-12 shrink-0 items-center gap-1 border-b ps-5 pe-2"
+        >
           {topbarContent}
-          <AppRouteModalClose />
         </header>
 
         <ScrollArea className="min-h-0 flex-1" observeContent>
@@ -597,7 +595,7 @@ export function UsagePage() {
           }}
         />
       ) : null}
-    </AppRouteModal>
+    </>
   );
 }
 

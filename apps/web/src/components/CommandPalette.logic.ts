@@ -1,3 +1,4 @@
+import { isForkMainCoordinatorThreadId } from "@t3tools/contracts";
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import {
   foldSearchQuery,
@@ -466,9 +467,9 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
   );
 
   return visibleThreads.map((thread) => {
-    const projectTitle = input.projectByKey.get(
-      `${thread.environmentId}:${thread.projectId}`,
-    )?.title;
+    const projectTitle = isForkMainCoordinatorThreadId(thread.id)
+      ? undefined
+      : input.projectByKey.get(`${thread.environmentId}:${thread.projectId}`)?.title;
     const descriptionParts: string[] = [];
 
     if (projectTitle) {

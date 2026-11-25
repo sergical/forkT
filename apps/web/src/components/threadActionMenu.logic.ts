@@ -115,6 +115,7 @@ export interface ThreadActionMenuState {
   readonly isRunning: boolean;
   /** The server marks unread against the latest run's completion, so in-flight runs cannot be. */
   readonly hasCompletedRun: boolean;
+  readonly isCoordinator?: boolean;
   readonly supports: {
     readonly settlement: boolean;
     readonly autoSettleOptOut: boolean;
@@ -324,9 +325,25 @@ export function buildThreadActionMenuItems(
       icon: "trash",
     },
   ];
+  const availableItems = state.isCoordinator
+    ? items.filter(
+        (item) =>
+          ![
+            "archive",
+            "delete",
+            "settle",
+            "unsettle",
+            "snooze",
+            "unsnooze",
+            "auto-settle",
+            "pin",
+            "unpin",
+          ].includes(item.id),
+      )
+    : items;
   return state.canOperate
-    ? items
-    : items.map((item) =>
+    ? availableItems
+    : availableItems.map((item) =>
         threadActionRequiresOperate(item.id) &&
         !(state.canTriage === true && isThreadTriageAction(item.id))
           ? {

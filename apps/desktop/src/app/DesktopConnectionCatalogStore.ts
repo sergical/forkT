@@ -388,7 +388,12 @@ export const make = Effect.gen(function* () {
   const safeStorage = yield* ElectronSafeStorage.ElectronSafeStorage;
   const random = yield* SecureRandom.SecureRandom;
   const savedEnvironments = yield* DesktopSavedEnvironments.DesktopSavedEnvironments;
-  const catalogPath = path.join(environment.stateDir, "connection-catalog.json");
+  // Packaged macOS builds use a new Keychain identity and must leave both legacy stores alone.
+  const usesForkKeychain = environment.platform === "darwin" && environment.isPackaged;
+  const catalogPath = path.join(
+    environment.stateDir,
+    usesForkKeychain ? "connection-catalog-macos.json" : "connection-catalog.json",
+  );
   const encryptionAvailable = safeStorage.isEncryptionAvailable.pipe(
     Effect.mapError(
       (cause) =>
@@ -521,7 +526,7 @@ export const make = Effect.gen(function* () {
     get: Effect.gen(function* () {
       const document = yield* readDocument(fileSystem, catalogPath);
       if (Option.isNone(document)) {
-        return yield* migrateLegacyCatalog;
+        return usesForkKeychain ? Option.none<string>() : yield* migrateLegacyCatalog;
       }
       if (!(yield* encryptionAvailable)) {
         return Option.none<string>();

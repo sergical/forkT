@@ -49,6 +49,13 @@ function prettyCauseFields(value: unknown): unknown {
   return changed ? Object.create(prototype, descriptors) : value;
 }
 
+const withoutAccessLogs = <Output>(logger: Logger.Logger<unknown, Output | undefined>) =>
+  Logger.make<unknown, Output | undefined>((options) => {
+    const messages = Array.isArray(options.message) ? options.message : [options.message];
+    if (messages.length === 0 || messages[0] === "Sent HTTP response") return undefined;
+    return logger.log(options);
+  });
+
 export const layer = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const hostName = yield* HostProcess.Hostname;
@@ -63,7 +70,15 @@ export const layer = Effect.gen(function* () {
           exportInterval: `${logs.exportIntervalMs} millis`,
           headers: logs.headers,
           resource: ServerConfig.otlpResource(config, hostName),
-        }).pipe(Effect.map(redactingCredentials));
+        }).pipe(
+          Effect.map(redactingCredentials),
+          // T3 fork: the fork's Sentry project gets no per-request access log lines.
+          Effect.map((logger) =>
+            config.forkSentry !== undefined && config.otlpLogsSource === undefined
+              ? withoutAccessLogs(logger)
+              : logger,
+          ),
+        );
 
   // Logger.layer replaces the whole set; name every logger here.
   // OTLP includes traced messages as log records, so also using tracerLogger would duplicate in-span exports.

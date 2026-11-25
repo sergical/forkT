@@ -140,6 +140,14 @@ const RPC_AGGREGATES = {
   [WS_METHODS.pullRequestsChecks]: "pull-requests",
   [WS_METHODS.pullRequestsActivity]: "pull-requests",
   [WS_METHODS.pullRequestsReviewGuide]: "pull-requests",
+  [WS_METHODS.forkDreamStart]: "orchestration",
+  [WS_METHODS.forkCoordinatorOpen]: "orchestration",
+  [WS_METHODS.forkMemoryGet]: "memory",
+  [WS_METHODS.forkMemorySearch]: "memory",
+  [WS_METHODS.forkMemoryIndex]: "memory",
+  [WS_METHODS.forkMemoryHistory]: "memory",
+  [WS_METHODS.forkMemorySave]: "memory",
+  [WS_METHODS.forkMemoryForget]: "memory",
   [WS_METHODS.pullRequestsGenerateReviewGuide]: "pull-requests",
   [WS_METHODS.pullRequestsThreadComments]: "pull-requests",
   [WS_METHODS.pullRequestsDiffFileContents]: "pull-requests",
@@ -290,7 +298,10 @@ export class RpcInstrumentation extends RpcMiddleware.Service<RpcInstrumentation
   "t3/server/RpcInstrumentation",
 ) {}
 
-export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect, { rpc }) => {
+export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((
+  effect,
+  { rpc, remoteParentSpan },
+) => {
   const method = rpc._tag;
   const measured = effect.pipe(
     withMetrics({ counter: rpcRequestsTotal, timer: rpcRequestDuration, attributes: { method } }),
@@ -306,7 +317,8 @@ export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect
     Effect.flatMap((connection) =>
       measured.pipe(
         Effect.withSpan(`${RPC_SPAN_PREFIX}.${method}`, {
-          root: true,
+          // A call from a traced client continues the client's trace.
+          ...(remoteParentSpan === undefined ? { root: true } : { parent: remoteParentSpan }),
           links: Option.match(connection, {
             onNone: () => [],
             onSome: (span) => [{ span, attributes: {} }],

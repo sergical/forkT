@@ -1,3 +1,4 @@
+import { ForkThreadTools } from "./ForkThreadTools";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { m as resolveMessage } from "~/i18n/messages";
 import { useAtomValue } from "@effect/atom-react";
@@ -1997,6 +1998,9 @@ export function ThreadsSettingsPanel() {
 
   return (
     <SettingsPageContainer>
+      <SettingsSection title={gt("Coordinators and Inbox")}>
+        <ForkThreadTools />
+      </SettingsSection>
       <SettingsSection id="new-projects" title={gt("New projects")}>
         <SettingsRow
           serverScoped

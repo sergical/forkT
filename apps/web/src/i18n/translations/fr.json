@@ -3211,7 +3211,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "sur l’ordinateur qui a ouvert cette page"]
+      "c": [
+        " ",
+        "sur l’ordinateur qui a ouvert cette page"
+      ]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3223,7 +3226,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "· quiconque l’exécute obtient cet accès"]
+      "c": [
+        " ",
+        "· quiconque l’exécute obtient cet accès"
+      ]
     }
   ],
   "c54cc9c75db9dc58": "N’approuvez qu’une connexion que vous venez de lancer.",
@@ -12279,10 +12285,26 @@
   "a16b48709357a5a7": "Gérer l’utilisation",
   "a00e74aaa421c524": "restant",
   "0e34c3076c08feb2": [
-    { "t": "span", "i": 1, "c": ["↻ +", { "i": 2, "k": "_gt_value_2", "v": "v" }, "%"] },
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        "↻ +",
+        {
+          "i": 2,
+          "k": "_gt_value_2",
+          "v": "v"
+        },
+        "%"
+      ]
+    },
     " ",
     "dans ",
-    { "i": 3, "k": "_gt_value_3", "v": "v" }
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    }
   ],
   "8bd6f07136317c8f": "Aucun fournisseur des environnements sélectionnés ne signale de limites d’abonnement.",
   "87f5d0c61b335f38": "Consultez l’utilisation dans ChatGPT avec votre compte connecté.",
@@ -12891,5 +12913,69 @@
   "f6a91589456cca50": "Approuvée",
   "c92657bb7f2293ff": "Approbation requise",
   "f1e5c1be1ac92361": "Approuver",
-  "fcb5f3c4d4753326": "Cette connexion ne peut pas approuver de commandes. Utilisez un client qui peut utiliser le terminal."
+  "fcb5f3c4d4753326": "Cette connexion ne peut pas approuver de commandes. Utilisez un client qui peut utiliser le terminal.",
+  "2bc39a8fee999e05": "Souvenirs",
+  "291a34a1e19bb8cb": "Masquer les fils",
+  "c40493d175dd3967": "Afficher les fils",
+  "6bbfd1c83a48046e": "Afficher les fils plus anciens",
+  "4f9bd01d00db2544": "Boîte de réception, décisions en attente",
+  "96018894225bd4ff": "Boîte de réception",
+  "ebb33e5e579283aa": "Réponse au plan enregistrée",
+  "28a195a8437557db": "Impossible d’envoyer la réponse au plan.",
+  "57deaaadc279e64b": "Modifications du plan",
+  "1049e076a46026bb": "Envoyer les modifications",
+  "3ed3c7991c548323": "Décision enregistrée",
+  "5f488eabef7d2016": "Réponse enregistrée",
+  "070babcc726100d9": "Saisir une réponse",
+  "3159c4f6f80940f4": "Boîte de réception",
+  "c5fe18909514cb76": "Aucune décision ne requiert votre attention.",
+  "d3b4fad2900a3f60": [
+    "Chargement de la demande de ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "…"
+  ],
+  "75814e75a6cc6350": "Ouvrez le fil pour répondre à cette demande.",
+  "b0a7a1902e8c29fe": "Mettre en œuvre le plan",
+  "3554fbab5a8480ce": "Approbation requise",
+  "6bf21baf07ab5778": "Cette demande ne peut plus être traitée ici.",
+  "5536b6ffc0e02e95": "Envoyer la réponse",
+  "4ce0c40822ddcc68": "Demande avant tout ce qui est important ou difficile à annuler. Tranche les petites décisions et te prévient.",
+  "ea810dc69d44d054": "Ne demande que si une décision change le périmètre ou le coût.",
+  "3e47d00748d05658": "Ne s'arrête jamais pour demander. Décide, note pourquoi et fait un compte rendu.",
+  "070e8d2523890f69": "{count, plural, one {{count} fil} other {{count} fils}}",
+  "643a29899cce9419": "Cochés par défaut : dépôts Git avec {count}+ fils ces {days} derniers jours.",
+  "f490ec21c167b25a": "Coordinateur principal",
+  "2e2f3c6a94895504": "Rechercher des souvenirs",
+  "cd3709902eeef8af": "Enregistrer un souvenir",
+  "2ddab0f9eae830d0": "Connectez un environnement pour voir ses souvenirs.",
+  "35461bba3e031ddd": "Sélectionnez un souvenir.",
+  "7f23b7bb1929c991": "Fais-moi le point sur ce projet",
+  "946ce353118c3af7": "Trouve ce qu'il faut corriger ensuite",
+  "39b5f0293a7a1a3d": "Planifie avec moi le prochain changement",
+  "dd19cd06820b987b": "Je suis le coordinateur de ce projet. Dis-moi ce que tu veux faire, je le mène dans des fils de tâches et je te fais un compte rendu.",
+  "e3c450f539deecb9": "Je suis le coordinateur de {project}. Dis-moi ce que tu veux faire, je le mène dans des fils de tâches et je te fais un compte rendu.",
+  "d25661576338fcf0": "Requiert votre attention",
+  "7b4c6014fb1af244": "Coordinateur",
+  "4d29b1d0ac9480a9": "{action, select, saved {Souvenir enregistré} updated {Souvenir mis à jour} other {Souvenir supprimé}}",
+  "d56e5b5f32385d0f": "{action, select, saved {Souvenir enregistré · {title}} updated {Souvenir mis à jour · {title}} other {Souvenir supprimé · {title}}}",
+  "57e7cec8df8de59d": "Comptes du coordinateur",
+  "58a195a157478a2a": "La sélection par abonnement est désactivée.",
+  "8d0f5d10c9c0e878": "Aucun abonnement autorisé.",
+  "3b83ac2c1d6ca9ae": "Limites d’utilisation",
+  "ea222b75c145ef48": "Tous les comptes Claude sont exclus, y compris ceux ajoutés ultérieurement.",
+  "f1cb9edfa92715d5": "Coordinateurs",
+  "3eed5f22e5cb32ee": "Ajoutez un projet pour utiliser les coordinateurs et Dream.",
+  "1840f8309499d689": "Ouvrir le coordinateur du projet",
+  "108f917b81c7a65d": "Ouvrir le coordinateur principal",
+  "f7624725c30391e7": "Lancer Dream pour ce projet",
+  "8fc8ed9b0e258f75": "Coordinateurs et boîte de réception",
+  "38dd049704ace50c": "Accueil de T3 fork",
+  "db47bb6ae4e361a6": "Mise à jour prête, redémarrer",
+  "534806a154a6cb9a": "{count, plural, one {Le redémarrage arrêtera {count} exécution d’agent.} other {Le redémarrage arrêtera {count} exécutions d’agent.}}",
+  "3e516a6075c1cdae": "L’application n’a pas pu redémarrer. Rouvre cet avis pour réessayer.",
+  "bd90fd96c98e9c6f": "Redémarrer"
 }

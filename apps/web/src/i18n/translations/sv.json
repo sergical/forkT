@@ -3211,7 +3211,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "på datorn som öppnade den här sidan"]
+      "c": [
+        " ",
+        "på datorn som öppnade den här sidan"
+      ]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3223,7 +3226,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "· den som kör den får den här åtkomsten"]
+      "c": [
+        " ",
+        "· den som kör den får den här åtkomsten"
+      ]
     }
   ],
   "c54cc9c75db9dc58": "Godkänn bara en inloggning som du själv precis har startat.",
@@ -12287,10 +12293,26 @@
   "a16b48709357a5a7": "Hantera användning",
   "a00e74aaa421c524": "kvar",
   "0e34c3076c08feb2": [
-    { "t": "span", "i": 1, "c": ["↻ +", { "i": 2, "k": "_gt_value_2", "v": "v" }, "%"] },
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        "↻ +",
+        {
+          "i": 2,
+          "k": "_gt_value_2",
+          "v": "v"
+        },
+        "%"
+      ]
+    },
     " ",
     "om ",
-    { "i": 3, "k": "_gt_value_3", "v": "v" }
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    }
   ],
   "8bd6f07136317c8f": "Ingen leverantör i de valda miljöerna rapporterar abonnemangsgränser.",
   "87f5d0c61b335f38": "Visa användning i ChatGPT med ditt anslutna konto.",
@@ -12898,5 +12920,69 @@
   "f6a91589456cca50": "Godkänt",
   "c92657bb7f2293ff": "Behöver godkännande",
   "f1e5c1be1ac92361": "Godkänn",
-  "fcb5f3c4d4753326": "Den här anslutningen kan inte godkänna kommandon. Använd en klient som får använda terminalen."
+  "fcb5f3c4d4753326": "Den här anslutningen kan inte godkänna kommandon. Använd en klient som får använda terminalen.",
+  "2bc39a8fee999e05": "Minnen",
+  "291a34a1e19bb8cb": "Dölj trådar",
+  "c40493d175dd3967": "Visa trådar",
+  "6bbfd1c83a48046e": "Visa äldre trådar",
+  "4f9bd01d00db2544": "Inkorg, väntande beslut",
+  "96018894225bd4ff": "Inkorg",
+  "ebb33e5e579283aa": "Plansvar sparat",
+  "28a195a8437557db": "Det gick inte att skicka svaret på planen.",
+  "57deaaadc279e64b": "Planändringar",
+  "1049e076a46026bb": "Skicka ändringar",
+  "3ed3c7991c548323": "Beslut sparat",
+  "5f488eabef7d2016": "Svar sparat",
+  "070babcc726100d9": "Skriv ett svar",
+  "3159c4f6f80940f4": "Inkorg",
+  "c5fe18909514cb76": "Inga beslut behöver din uppmärksamhet.",
+  "d3b4fad2900a3f60": [
+    "Läser in begäran från ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "…"
+  ],
+  "75814e75a6cc6350": "Öppna tråden för att svara på den här begäran.",
+  "b0a7a1902e8c29fe": "Genomför planen",
+  "3554fbab5a8480ce": "Godkännande krävs",
+  "6bf21baf07ab5778": "Det går inte längre att svara på den här begäran här.",
+  "5536b6ffc0e02e95": "Skicka svar",
+  "4ce0c40822ddcc68": "Frågar före allt stort eller svårt att ångra. Tar små beslut själv och berättar.",
+  "ea810dc69d44d054": "Frågar bara när ett beslut ändrar omfattning eller kostnad.",
+  "3e47d00748d05658": "Stannar aldrig för att fråga. Bestämmer, antecknar varför och rapporterar.",
+  "070e8d2523890f69": "{count, plural, one {{count} tråd} other {{count} trådar}}",
+  "643a29899cce9419": "Valda som standard: Git-repon med {count}+ trådar de senaste {days} dagarna.",
+  "f490ec21c167b25a": "Huvudkoordinator",
+  "2e2f3c6a94895504": "Sök i minnen",
+  "cd3709902eeef8af": "Spara ett minne",
+  "2ddab0f9eae830d0": "Anslut en miljö för att se dess minnen.",
+  "35461bba3e031ddd": "Välj ett minne.",
+  "7f23b7bb1929c991": "Uppdatera mig om det här projektet",
+  "946ce353118c3af7": "Hitta vad som ska fixas härnäst",
+  "39b5f0293a7a1a3d": "Planera nästa ändring med mig",
+  "dd19cd06820b987b": "Jag är det här projektets koordinator. Säg vad du vill ha gjort, så kör jag det i uppgiftstrådar och rapporterar.",
+  "e3c450f539deecb9": "Jag är koordinator för {project}. Säg vad du vill ha gjort, så kör jag det i uppgiftstrådar och rapporterar.",
+  "d25661576338fcf0": "Behöver din hjälp",
+  "7b4c6014fb1af244": "Koordinator",
+  "4d29b1d0ac9480a9": "{action, select, saved {Sparade minne} updated {Uppdaterade minne} other {Tog bort minne}}",
+  "d56e5b5f32385d0f": "{action, select, saved {Sparade minne · {title}} updated {Uppdaterade minne · {title}} other {Tog bort minne · {title}}}",
+  "57e7cec8df8de59d": "Koordinatorkonton",
+  "58a195a157478a2a": "Val efter prenumeration är avstängt.",
+  "8d0f5d10c9c0e878": "Inga tillåtna prenumerationer.",
+  "3b83ac2c1d6ca9ae": "Användningsgränser",
+  "ea222b75c145ef48": "Alla Claude-konton är uteslutna, även de som läggs till senare.",
+  "f1cb9edfa92715d5": "Koordinatorer",
+  "3eed5f22e5cb32ee": "Lägg till ett projekt för att använda koordinatorer och Dream.",
+  "1840f8309499d689": "Öppna projektkoordinatorn",
+  "108f917b81c7a65d": "Öppna huvudkoordinatorn",
+  "f7624725c30391e7": "Starta Dream för projektet",
+  "8fc8ed9b0e258f75": "Koordinatorer och inkorg",
+  "38dd049704ace50c": "T3 forks startsida",
+  "db47bb6ae4e361a6": "Uppdatering klar, starta om",
+  "534806a154a6cb9a": "{count, plural, one {Omstarten stoppar {count} agentkörning.} other {Omstarten stoppar {count} agentkörningar.}}",
+  "3e516a6075c1cdae": "Det gick inte att starta om appen. Öppna det här meddelandet igen för att försöka på nytt.",
+  "bd90fd96c98e9c6f": "Starta om"
 }

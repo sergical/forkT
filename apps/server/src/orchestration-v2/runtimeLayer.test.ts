@@ -1,3 +1,14 @@
+import * as MemoryHandlers from "../mcp/toolkits/memory/handlers.ts";
+import { MemoryToolkit } from "../mcp/toolkits/memory/tools.ts";
+import * as ForkDream from "../project/ForkDreamService.ts";
+import * as ForkMemory from "../project/ForkMemoryService.ts";
+import * as Coordinator from "../project/ForkCoordinatorService.ts";
+import * as CoordinatorStore from "../project/ForkCoordinatorStore.ts";
+import * as HtmlRender from "../htmlRender/HtmlRender.ts";
+import * as HtmlHandlers from "../mcp/toolkits/html/handlers.ts";
+import { HtmlRenderToolkit } from "../mcp/toolkits/html/tools.ts";
+import * as McpAccess from "../mcp/McpToolAccess.ts";
+import * as McpContext from "../mcp/McpInvocationContext.ts";
 import { PullRequestProviderError } from "@t3tools/source-control-core/server/PullRequestProvider";
 import { PullRequestUnavailableError, SourceControlProviderKind } from "@t3tools/contracts";
 import { limitRecoveryCommand } from "./UsageLimitRecoveryWorker.ts";
@@ -89,6 +100,7 @@ import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import { layerNoTaskFolders } from "./ProviderTurnStartService.testkit.ts";
+import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
 import * as RuntimeLayer from "./runtimeLayer.ts";
 import { shellStreamItemFromThreadShell } from "./ShellStream.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
@@ -354,8 +366,12 @@ const layerProjectionReplayTest = ProjectionReplay.layer.pipe(
   ),
 );
 
+const layerRuntimeTestWithProviderRegistry = RuntimeLayer.layer.pipe(
+  Layer.provide(ProviderRegistryMock.layer()),
+);
+
 const layerTest = Layer.mergeAll(
-  RuntimeLayer.layer,
+  layerRuntimeTestWithProviderRegistry,
   layerProjectionReplayTest,
   RuntimeLayer.layerEventSink,
   ProjectStore.layer,
@@ -375,7 +391,10 @@ const layerTest = Layer.mergeAll(
   Layer.provide(layerPlatformTest),
 );
 
-const layerLegacyImportTest = Layer.merge(RuntimeLayer.layer, layerProjectionReplayTest).pipe(
+const layerLegacyImportTest = Layer.merge(
+  layerRuntimeTestWithProviderRegistry,
+  layerProjectionReplayTest,
+).pipe(
   Layer.provide(McpSessionRegistryTestkit.layer),
   Layer.provide(McpProviderSessions.layer),
   Layer.provideMerge(SqlitePersistence.layerMemory),
@@ -474,7 +493,7 @@ const layerResourceCleanupTest = ResourceCleanupService.layer.pipe(
 );
 
 const layerProjectDeletionTest = Layer.mergeAll(
-  RuntimeLayer.layer.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
+  layerRuntimeTestWithProviderRegistry.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
   RuntimeLayer.layerProjectService,
   RuntimeLayer.layerEventSink,
   ProjectionStore.layer,
@@ -1353,7 +1372,7 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
 
 const layerSharedApplicationDataPlaneTest = Layer.mergeAll(
   layerProjectionReplayTest,
-  RuntimeLayer.layer.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
+  layerRuntimeTestWithProviderRegistry.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
   RuntimeLayer.layerProjectService,
   RuntimeLayer.layerEventSink,
   RuntimeLayer.layerEventInfrastructure,
@@ -3920,6 +3939,49 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const pinnedProjection = yield* orchestrator.getThreadProjection(threadId);
       assert.equal(pinnedProjection.thread.settledOverride, "active");
       assert.isNotNull(pinnedProjection.thread.unsettledAt);
+
+      yield* orchestrator.dispatch({
+        type: "thread.unpin",
+        commandId: CommandId.make("runtime-layer-lifecycle-unpin"),
+        threadId,
+      });
+      assert.isNull((yield* orchestrator.getThreadProjection(threadId)).thread.pinnedAt);
+
+      const coordinatorId = ThreadId.make(`fork:project:${projectId}:1`);
+      yield* orchestrator.dispatch({
+        ...create,
+        commandId: CommandId.make("runtime-layer-lifecycle-coordinator"),
+        threadId: coordinatorId,
+        title: "Coordinator",
+      });
+      const coordinatorShell = yield* orchestrator.getThreadProjection(coordinatorId);
+      for (const command of [
+        { type: "thread.settle" },
+        { type: "thread.auto-settle", snapshotAt: coordinatorShell.thread.updatedAt },
+        {
+          type: "thread.snooze",
+          snoozedUntil: DateTime.formatIso(DateTime.add(yield* DateTime.now, { hours: 1 })),
+        },
+        { type: "thread.archive" },
+        { type: "thread.delete" },
+        { type: "thread.pin" },
+        { type: "thread.unpin" },
+        { type: "thread.pin.reorder", orderKey: "a0" },
+        { type: "thread.active.reorder", orderKey: "a0" },
+      ] as const) {
+        const rejected = yield* orchestrator
+          .dispatch({
+            ...command,
+            commandId: CommandId.make(`runtime-layer-lifecycle-coordinator-${command.type}`),
+            threadId: coordinatorId,
+          })
+          .pipe(Effect.flip);
+        assert.include(rejected.cause, "Coordinator threads stay active");
+      }
+      assert.equal(
+        (yield* orchestrator.getThreadProjection(coordinatorId)).thread.id,
+        coordinatorId,
+      );
 
       const archive = yield* orchestrator.dispatch({
         type: "thread.archive",
@@ -12285,6 +12347,142 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
   );
 });
 
+it.layer(layerSharedApplicationDataPlaneTest)("main coordinator project handoff", (it) => {
+  it.effect.each(["html", "writing"] as const)(
+    "queues one %s deliverable with source and returns its link on retry",
+    (kind) =>
+      Effect.gen(function* () {
+        const projects = yield* ProjectService.ProjectService;
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const store = yield* CoordinatorStore.ForkCoordinatorStore;
+        const main = ThreadId.make(kind === "html" ? "fork:global:1" : "fork:global:2");
+        const target = ProjectId.make("known-project-" + kind);
+        for (const projectId of [ProjectId.make("scratch-" + kind), target]) {
+          yield* projects.create({
+            projectId,
+            commandId: CommandId.make(projectId),
+            title: projectId,
+            workspaceRoot: "/tmp/" + projectId,
+          });
+          const threadId =
+            projectId === target
+              ? (yield* store.claim({
+                  global: false,
+                  projectId,
+                  modelSelection,
+                  runtimeMode: "full-access",
+                })).threadId
+              : main;
+          yield* orchestrator.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make(threadId),
+            threadId,
+            projectId,
+            title: threadId,
+            modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdBy: "user",
+            creationSource: "web",
+          });
+        }
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make("deliverable-" + kind),
+          threadId: main,
+          messageId: MessageId.make("landing"),
+          text:
+            kind === "html"
+              ? "Report status, then design a landing page for the known project."
+              : "Report status, then draft release notes for the known project.",
+          attachments: [],
+          modelSelection,
+          dispatchMode: { type: "start_immediately" },
+          createdBy: "user",
+          creationSource: "web",
+        });
+        const destination = (yield* store.get({ global: false, projectId: target }))!.threadId;
+        const scope = {
+          environmentId: EnvironmentId.make("local"),
+          requestNamespace: "fixture",
+          issuedAt: 0,
+          client: undefined,
+          thread: {
+            threadId: main,
+            providerInstanceId: modelSelection.instanceId,
+            providerSessionId: "fixture",
+          },
+          capabilities: new Set(["orchestration" as const]),
+        };
+        assert.lengthOf((yield* orchestrator.getThreadProjection(destination)).runs, 0);
+        const source =
+          kind === "html"
+            ? "Create the landing page using the project's existing typography."
+            : "Draft release notes for the project. Explain the keyboard shortcut.";
+        const handoff = { projectId: target, source, requestId: "deliverable" };
+        const call = (entry: "html" | "writing") =>
+          Effect.gen(function* () {
+            if (entry === "html") {
+              return yield* (yield* HtmlRenderToolkit)
+                .handle("html_render", { intent: { kind: "project", ...handoff } })
+                .pipe(
+                  Stream.unwrap,
+                  Stream.runCollect,
+                  Effect.map((parts) => parts.at(-1)?.result),
+                );
+            }
+            return yield* (yield* MemoryToolkit)
+              .handle("t3_coordinator_open", { global: false, handoff })
+              .pipe(
+                Stream.unwrap,
+                Stream.runCollect,
+                Effect.map((parts) => parts.at(-1)?.result),
+              );
+          }).pipe(
+            Effect.provide(
+              Layer.merge(
+                McpAccess.HandlersLayer.layer(HtmlHandlers.layerRender),
+                McpAccess.HandlersLayer.layer(MemoryHandlers.layer),
+              ),
+            ),
+            Effect.provideService(McpContext.McpInvocationContext, scope),
+          );
+        for (let attempt = 0; attempt < 2; attempt++)
+          assert.include(yield* call(attempt === 0 ? kind : "writing"), {
+            link: McpContext.threadLinkFor(scope, destination, "Project coordinator"),
+          });
+        const projection = yield* orchestrator.getThreadProjection(destination);
+        assert.lengthOf(projection.runs, 1);
+        assert.lengthOf(projection.messages, 1);
+        assert.include(projection.messages[0]!.text, source);
+        assert.equal(projection.messages[0]!.senderThreadId, main);
+        assert.include(
+          projection.messages[0]!.text,
+          McpContext.threadLinkFor(scope, main, "Main coordinator"),
+        );
+      }).pipe(
+        Effect.provide(
+          Coordinator.layer.pipe(
+            Layer.provideMerge(CoordinatorStore.layer),
+            Layer.provide(ServerSettings.layerTest()),
+            Layer.provide(ProviderRegistryMock.layer()),
+            Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
+            Layer.provide(
+              Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+                namedProjectsRoot: "/tmp/projects",
+              }),
+            ),
+            Layer.merge(Layer.mock(HtmlRender.HtmlRender)({})),
+            Layer.merge(Layer.mock(ForkDream.ForkDreamService)({})),
+            Layer.merge(Layer.mock(ForkMemory.ForkMemoryService)({})),
+          ),
+        ),
+      ),
+  );
+});
+
 it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (it) => {
   it.effect("interrupts a pending provider start without launching provider work", () =>
     Effect.gen(function* () {
@@ -14695,7 +14893,7 @@ const queueResumeDisabledInstanceProjectId = ProjectId.make(
 );
 
 const layerQueueResumeDisabledInstanceTest = Layer.mergeAll(
-  RuntimeLayer.layer,
+  layerRuntimeTestWithProviderRegistry,
   RuntimeLayer.layerEventSink,
   ProjectStore.layer,
   ProjectionStore.layer,

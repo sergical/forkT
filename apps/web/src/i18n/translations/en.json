@@ -3211,7 +3211,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "on the computer that opened this page"]
+      "c": [
+        " ",
+        "on the computer that opened this page"
+      ]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3223,7 +3226,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "· whoever runs it gets this access"]
+      "c": [
+        " ",
+        "· whoever runs it gets this access"
+      ]
     }
   ],
   "c54cc9c75db9dc58": "Only approve a sign-in you just started.",
@@ -12289,10 +12295,26 @@
   "a16b48709357a5a7": "Manage usage",
   "a00e74aaa421c524": "left",
   "0e34c3076c08feb2": [
-    { "t": "span", "i": 1, "c": ["↻ +", { "i": 2, "k": "_gt_value_2", "v": "v" }, "%"] },
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        "↻ +",
+        {
+          "i": 2,
+          "k": "_gt_value_2",
+          "v": "v"
+        },
+        "%"
+      ]
+    },
     " ",
     "in ",
-    { "i": 3, "k": "_gt_value_3", "v": "v" }
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    }
   ],
   "8bd6f07136317c8f": "No provider on the selected environments reports subscription limits.",
   "87f5d0c61b335f38": "View usage in ChatGPT with your connected account.",
@@ -12900,5 +12922,69 @@
   "f6a91589456cca50": "Approved",
   "c92657bb7f2293ff": "Needs approval",
   "f1e5c1be1ac92361": "Approve",
-  "fcb5f3c4d4753326": "This connection cannot approve commands. Use a client that can use the terminal."
+  "fcb5f3c4d4753326": "This connection cannot approve commands. Use a client that can use the terminal.",
+  "2bc39a8fee999e05": "Memories",
+  "291a34a1e19bb8cb": "Hide threads",
+  "c40493d175dd3967": "Show threads",
+  "6bbfd1c83a48046e": "Show older threads",
+  "4f9bd01d00db2544": "Inbox, decisions pending",
+  "96018894225bd4ff": "Inbox",
+  "ebb33e5e579283aa": "Plan response recorded",
+  "28a195a8437557db": "Failed to submit plan response.",
+  "57deaaadc279e64b": "Plan changes",
+  "1049e076a46026bb": "Send changes",
+  "3ed3c7991c548323": "Decision recorded",
+  "5f488eabef7d2016": "Answer recorded",
+  "070babcc726100d9": "Type an answer",
+  "3159c4f6f80940f4": "Inbox",
+  "c5fe18909514cb76": "No decisions need your attention.",
+  "d3b4fad2900a3f60": [
+    "Loading request from ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "…"
+  ],
+  "75814e75a6cc6350": "Open the thread to respond to this request.",
+  "b0a7a1902e8c29fe": "Implement plan",
+  "3554fbab5a8480ce": "Approval needed",
+  "6bf21baf07ab5778": "This request can no longer be answered here.",
+  "5536b6ffc0e02e95": "Send answer",
+  "4ce0c40822ddcc68": "Asks before anything big or hard to undo. Makes small calls and tells you.",
+  "ea810dc69d44d054": "Asks only when a decision changes scope or cost.",
+  "3e47d00748d05658": "Never stops to ask. Decides, notes why, and reports back.",
+  "070e8d2523890f69": "{count, plural, one {{count} thread} other {{count} threads}}",
+  "643a29899cce9419": "Picked by default: Git repos with {count}+ threads in the last {days} days.",
+  "f490ec21c167b25a": "Main coordinator",
+  "2e2f3c6a94895504": "Search memories",
+  "cd3709902eeef8af": "Remember something",
+  "2ddab0f9eae830d0": "Connect an environment to see its memories.",
+  "35461bba3e031ddd": "Select a memory.",
+  "7f23b7bb1929c991": "Catch me up on this project",
+  "946ce353118c3af7": "Find what to fix next",
+  "39b5f0293a7a1a3d": "Plan the next change with me",
+  "dd19cd06820b987b": "I'm this project's coordinator. Tell me what you want done, and I'll run it in task threads and report back.",
+  "e3c450f539deecb9": "I'm the coordinator for {project}. Tell me what you want done, and I'll run it in task threads and report back.",
+  "d25661576338fcf0": "Needs you",
+  "7b4c6014fb1af244": "Coordinator",
+  "4d29b1d0ac9480a9": "{action, select, saved {Saved memory} updated {Updated memory} other {Removed memory}}",
+  "d56e5b5f32385d0f": "{action, select, saved {Saved memory · {title}} updated {Updated memory · {title}} other {Removed memory · {title}}}",
+  "57e7cec8df8de59d": "Coordinator accounts",
+  "58a195a157478a2a": "Subscription routing is off.",
+  "8d0f5d10c9c0e878": "No allowed subscriptions.",
+  "3b83ac2c1d6ca9ae": "Usage limits",
+  "ea222b75c145ef48": "All Claude accounts are excluded, including accounts added later.",
+  "f1cb9edfa92715d5": "Coordinators",
+  "3eed5f22e5cb32ee": "Add a project to use coordinators and Dream.",
+  "1840f8309499d689": "Open project coordinator",
+  "108f917b81c7a65d": "Open main coordinator",
+  "f7624725c30391e7": "Dream about this project",
+  "8fc8ed9b0e258f75": "Coordinators and Inbox",
+  "38dd049704ace50c": "T3 fork home",
+  "db47bb6ae4e361a6": "Update ready, restart",
+  "534806a154a6cb9a": "{count, plural, one {Restarting will stop {count} agent run.} other {Restarting will stop {count} agent runs.}}",
+  "3e516a6075c1cdae": "The app could not restart. Open this notice again to retry.",
+  "bd90fd96c98e9c6f": "Restart"
 }

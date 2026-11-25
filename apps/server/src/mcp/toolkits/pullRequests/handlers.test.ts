@@ -1,3 +1,4 @@
+import * as ServerSettings from "../../../serverSettings.ts";
 import {
   EnvironmentId,
   ProjectId,
@@ -51,11 +52,12 @@ const testCrypto = SecureRandom.make((size) => new Uint8Array(size).fill(7));
 
 const invocation = (
   capabilities: ReadonlyArray<McpInvocationContext.McpCapability>,
+  threadId = THREAD_ID,
 ): McpInvocationContext.McpInvocationScope => ({
   environmentId: EnvironmentId.make("environment-1"),
   requestNamespace: "provider-session-1",
   thread: {
-    threadId: THREAD_ID,
+    threadId,
     providerSessionId: "provider-session-1",
     providerInstanceId: ProviderInstanceId.make("codex"),
   },
@@ -143,6 +145,7 @@ function makeLink(
 }
 
 interface HarnessOptions {
+  readonly forkRouting?: boolean;
   readonly thread?: PullRequestTestThread | null;
   readonly project?: OrchestrationProjectShell | null;
   readonly reject?: (command: OrchestrationCommand) => string | null;
@@ -179,6 +182,13 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       return { sequence: 1, storedEvents: [] };
     });
   const layerDependencies = Layer.mergeAll(
+    ServerSettings.layerTest(
+      options.forkRouting
+        ? {
+            forkCoordinatorRouting: { excludedDrivers: [], excludedInstances: [] },
+          }
+        : {},
+    ),
     Layer.mock(PullRequestWatchService.PullRequestWatchService)({}),
     Layer.mock(ProjectService.ProjectService)({
       getShell: () => Effect.succeed(Option.fromNullishOr(project)),
@@ -233,7 +243,10 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       Effect.map(
         (chunk) => chunk.at(-1)!.result as Tool.Success<(typeof PullRequestsToolkit.tools)[Name]>,
       ),
-      Effect.provideService(McpInvocationContext.McpInvocationContext, invocation(capabilities)),
+      Effect.provideService(
+        McpInvocationContext.McpInvocationContext,
+        invocation(capabilities, thread?.id),
+      ),
       Effect.provide(layerDependencies),
     );
   return { commands, guideRequests, call };
@@ -693,6 +706,22 @@ describe("listThreadPullRequests", () => {
 });
 
 describe("pull request guide tools", () => {
+  it.effect("requires a routed review for fork callers", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        forkRouting: true,
+        thread: { ...makeThread([]), id: ThreadId.make("fork:global:1") },
+      });
+      const result = yield* harness
+        .call("write_pull_request_guides", {
+          pullRequests: [{ url: "https://github.com/t3tools/t3code/pull/7" }],
+        })
+        .pipe(Effect.result);
+      expect(result._tag).toBe("Failure");
+      expect(yield* Ref.get(harness.guideRequests)).toEqual([]);
+    }),
+  );
+
   it.effect(
     "writes guides through the project whose checkout is each pull request's repository",
     () =>

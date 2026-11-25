@@ -28,6 +28,8 @@ export type SettingsPath =
   | "/settings/keybindings"
   | "/settings/snap-shot"
   | "/settings/providers"
+  | "/settings/memories"
+  | "/settings/usage"
   | "/settings/threads"
   | "/settings/browser"
   | "/settings/devices"
@@ -107,6 +109,8 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/snap-shot": msg("SnapShots"),
   "/settings/providers": msg("Providers"),
   "/settings/threads": msg("Threads"),
+  "/settings/memories": msg("Memories"),
+  "/settings/usage": msg("Usage"),
   "/settings/browser": msg("Browser"),
   "/settings/devices": msg("Devices"),
   "/settings/scheduled-tasks": msg("Scheduled tasks"),
@@ -157,6 +161,8 @@ const ALL_SETTINGS_NAV_GROUPS: ReadonlyArray<SettingsNavGroup> = [
     paths: [
       "/settings/providers",
       "/settings/threads",
+      "/settings/memories",
+      "/settings/usage",
       "/settings/browser",
       "/settings/devices",
       "/settings/scheduled-tasks",
@@ -253,6 +259,9 @@ const SOURCE_CONTROL_HOST_TERMS = sourceControlClients.definitions
   .join(" ");
 
 export const SETTINGS_SEARCH_ITEMS = [
+  { id: "memories", title: msg("Memories"), to: "/settings/memories" },
+  { id: "usage", title: msg("Usage"), to: "/settings/usage" },
+  { id: "limits", title: msg("Usage limits"), to: "/settings/usage" },
   {
     id: "storage-worktree-keep-when",
     targetId: "storage-worktrees",
@@ -1543,6 +1552,8 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/keybindings": null,
   "/settings/providers": null,
   "/settings/threads": null,
+  "/settings/memories": null,
+  "/settings/usage": null,
   "/settings/browser": null,
   "/settings/devices": null,
   "/settings/source-control": "environment-defaults",

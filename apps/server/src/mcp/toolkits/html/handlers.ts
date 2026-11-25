@@ -1,9 +1,10 @@
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import { isForkMainCoordinatorThreadId, OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import * as HtmlRender from "../../../htmlRender/HtmlRender.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
+import { handoffProjectDeliverable } from "../../handoffProjectDeliverable.ts";
 import { loadCaller } from "../../threadAccess.ts";
 import { HtmlPreviewToolkit, HtmlRenderToolkit, type HtmlToolkit } from "./tools.ts";
 
@@ -71,6 +72,23 @@ const handlers = {
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const { thread } = yield* McpInvocationContext.requireThreadScope(scope, "html_render");
+      const main = isForkMainCoordinatorThreadId(thread.threadId);
+      if (main && !input.intent) {
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message:
+            "Declare inline intent for an unscoped visual or project intent for a known project deliverable.",
+        });
+      }
+      if (input.intent?.kind === "project") {
+        const { link, message } = yield* handoffProjectDeliverable(input.intent);
+        return { link, message };
+      }
+      if (input.title === undefined || input.height === undefined)
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message: "Inline renders require a title and height.",
+        });
       const htmlRender = yield* HtmlRender.HtmlRender;
       const source = yield* pageSource(input);
       const reference = yield* htmlRender

@@ -3211,7 +3211,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "en el ordenador que abrió esta página"]
+      "c": [
+        " ",
+        "en el ordenador que abrió esta página"
+      ]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3223,7 +3226,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "· quien lo ejecute obtiene este acceso"]
+      "c": [
+        " ",
+        "· quien lo ejecute obtiene este acceso"
+      ]
     }
   ],
   "c54cc9c75db9dc58": "Aprueba solo un inicio de sesión que acabes de iniciar.",
@@ -12274,10 +12280,26 @@
   "a16b48709357a5a7": "Gestionar uso",
   "a00e74aaa421c524": "restante",
   "0e34c3076c08feb2": [
-    { "t": "span", "i": 1, "c": ["↻ +", { "i": 2, "k": "_gt_value_2", "v": "v" }, "%"] },
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        "↻ +",
+        {
+          "i": 2,
+          "k": "_gt_value_2",
+          "v": "v"
+        },
+        "%"
+      ]
+    },
     " ",
     "en ",
-    { "i": 3, "k": "_gt_value_3", "v": "v" }
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    }
   ],
   "8bd6f07136317c8f": "Ningún proveedor de los entornos seleccionados informa de límites de suscripción.",
   "87f5d0c61b335f38": "Consulta el uso en ChatGPT con tu cuenta conectada.",
@@ -12886,5 +12908,69 @@
   "f6a91589456cca50": "Aprobado",
   "c92657bb7f2293ff": "Necesita aprobación",
   "f1e5c1be1ac92361": "Aprobar",
-  "fcb5f3c4d4753326": "Esta conexión no puede aprobar comandos. Usa un cliente que pueda usar el terminal."
+  "fcb5f3c4d4753326": "Esta conexión no puede aprobar comandos. Usa un cliente que pueda usar el terminal.",
+  "2bc39a8fee999e05": "Recuerdos",
+  "291a34a1e19bb8cb": "Ocultar hilos",
+  "c40493d175dd3967": "Mostrar hilos",
+  "6bbfd1c83a48046e": "Mostrar hilos anteriores",
+  "4f9bd01d00db2544": "Bandeja de entrada, decisiones pendientes",
+  "96018894225bd4ff": "Bandeja de entrada",
+  "ebb33e5e579283aa": "Respuesta al plan registrada",
+  "28a195a8437557db": "No se pudo enviar la respuesta al plan.",
+  "57deaaadc279e64b": "Cambios en el plan",
+  "1049e076a46026bb": "Enviar cambios",
+  "3ed3c7991c548323": "Decisión registrada",
+  "5f488eabef7d2016": "Respuesta registrada",
+  "070babcc726100d9": "Escribe una respuesta",
+  "3159c4f6f80940f4": "Bandeja de entrada",
+  "c5fe18909514cb76": "No hay decisiones pendientes.",
+  "d3b4fad2900a3f60": [
+    "Cargando solicitud de ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "…"
+  ],
+  "75814e75a6cc6350": "Abre el hilo para responder a esta solicitud.",
+  "b0a7a1902e8c29fe": "Implementar plan",
+  "3554fbab5a8480ce": "Se requiere aprobación",
+  "6bf21baf07ab5778": "Ya no se puede responder a esta solicitud aquí.",
+  "5536b6ffc0e02e95": "Enviar respuesta",
+  "4ce0c40822ddcc68": "Pregunta antes de cualquier cosa grande o difícil de deshacer. Las decisiones pequeñas las toma y te avisa.",
+  "ea810dc69d44d054": "Solo pregunta cuando una decisión cambia el alcance o el costo.",
+  "3e47d00748d05658": "Nunca se detiene a preguntar. Decide, anota por qué e informa.",
+  "070e8d2523890f69": "{count, plural, one {{count} hilo} other {{count} hilos}}",
+  "643a29899cce9419": "Seleccionados por defecto: repos Git con {count}+ hilos en los últimos {days} días.",
+  "f490ec21c167b25a": "Coordinador principal",
+  "2e2f3c6a94895504": "Buscar recuerdos",
+  "cd3709902eeef8af": "Guardar un recuerdo",
+  "2ddab0f9eae830d0": "Conecta un entorno para ver sus recuerdos.",
+  "35461bba3e031ddd": "Selecciona un recuerdo.",
+  "7f23b7bb1929c991": "Ponme al día con este proyecto",
+  "946ce353118c3af7": "Encuentra qué arreglar a continuación",
+  "39b5f0293a7a1a3d": "Planea conmigo el próximo cambio",
+  "dd19cd06820b987b": "Soy el coordinador de este proyecto. Dime qué quieres hacer y lo ejecutaré en hilos de tareas y te informaré.",
+  "e3c450f539deecb9": "Soy el coordinador de {project}. Dime qué quieres hacer y lo ejecutaré en hilos de tareas y te informaré.",
+  "d25661576338fcf0": "Requiere tu atención",
+  "7b4c6014fb1af244": "Coordinador",
+  "4d29b1d0ac9480a9": "{action, select, saved {Recuerdo guardado} updated {Recuerdo actualizado} other {Recuerdo eliminado}}",
+  "d56e5b5f32385d0f": "{action, select, saved {Recuerdo guardado · {title}} updated {Recuerdo actualizado · {title}} other {Recuerdo eliminado · {title}}}",
+  "57e7cec8df8de59d": "Cuentas del coordinador",
+  "58a195a157478a2a": "La selección por suscripción está desactivada.",
+  "8d0f5d10c9c0e878": "No hay suscripciones permitidas.",
+  "3b83ac2c1d6ca9ae": "Límites de uso",
+  "ea222b75c145ef48": "Se excluyen todas las cuentas de Claude, incluidas las que se añadan más adelante.",
+  "f1cb9edfa92715d5": "Coordinadores",
+  "3eed5f22e5cb32ee": "Añade un proyecto para usar los coordinadores y Dream.",
+  "1840f8309499d689": "Abrir coordinador del proyecto",
+  "108f917b81c7a65d": "Abrir coordinador principal",
+  "f7624725c30391e7": "Iniciar Dream para este proyecto",
+  "8fc8ed9b0e258f75": "Coordinadores y bandeja de entrada",
+  "38dd049704ace50c": "Inicio de T3 fork",
+  "db47bb6ae4e361a6": "Actualización lista, reiniciar",
+  "534806a154a6cb9a": "{count, plural, one {Al reiniciar se detendrá {count} ejecución de agente.} other {Al reiniciar se detendrán {count} ejecuciones de agente.}}",
+  "3e516a6075c1cdae": "No se pudo reiniciar la aplicación. Abre de nuevo este aviso para volver a intentarlo.",
+  "bd90fd96c98e9c6f": "Reiniciar"
 }

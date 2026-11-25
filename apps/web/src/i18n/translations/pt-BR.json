@@ -3211,7 +3211,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "no computador que abriu esta página"]
+      "c": [
+        " ",
+        "no computador que abriu esta página"
+      ]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3223,7 +3226,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "· quem executar recebe este acesso"]
+      "c": [
+        " ",
+        "· quem executar recebe este acesso"
+      ]
     }
   ],
   "c54cc9c75db9dc58": "Aprove apenas um login que você acabou de iniciar.",
@@ -12279,10 +12285,26 @@
   "a16b48709357a5a7": "Gerenciar uso",
   "a00e74aaa421c524": "restante",
   "0e34c3076c08feb2": [
-    { "t": "span", "i": 1, "c": ["↻ +", { "i": 2, "k": "_gt_value_2", "v": "v" }, "%"] },
+    {
+      "t": "span",
+      "i": 1,
+      "c": [
+        "↻ +",
+        {
+          "i": 2,
+          "k": "_gt_value_2",
+          "v": "v"
+        },
+        "%"
+      ]
+    },
     " ",
     "em ",
-    { "i": 3, "k": "_gt_value_3", "v": "v" }
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    }
   ],
   "8bd6f07136317c8f": "Nenhum provedor nos ambientes selecionados informa limites de assinatura.",
   "87f5d0c61b335f38": "Veja o uso no ChatGPT com sua conta conectada.",
@@ -12891,5 +12913,69 @@
   "f6a91589456cca50": "Aprovado",
   "c92657bb7f2293ff": "Precisa de aprovação",
   "f1e5c1be1ac92361": "Aprovar",
-  "fcb5f3c4d4753326": "Esta conexão não pode aprovar comandos. Use um cliente que possa usar o terminal."
+  "fcb5f3c4d4753326": "Esta conexão não pode aprovar comandos. Use um cliente que possa usar o terminal.",
+  "2bc39a8fee999e05": "Memórias",
+  "291a34a1e19bb8cb": "Ocultar conversas",
+  "c40493d175dd3967": "Mostrar conversas",
+  "6bbfd1c83a48046e": "Mostrar conversas antigas",
+  "4f9bd01d00db2544": "Caixa de entrada, decisões pendentes",
+  "96018894225bd4ff": "Caixa de entrada",
+  "ebb33e5e579283aa": "Resposta ao plano registrada",
+  "28a195a8437557db": "Não foi possível enviar a resposta ao plano.",
+  "57deaaadc279e64b": "Alterações no plano",
+  "1049e076a46026bb": "Enviar alterações",
+  "3ed3c7991c548323": "Decisão registrada",
+  "5f488eabef7d2016": "Resposta registrada",
+  "070babcc726100d9": "Digite uma resposta",
+  "3159c4f6f80940f4": "Caixa de entrada",
+  "c5fe18909514cb76": "Nenhuma decisão precisa da sua atenção.",
+  "d3b4fad2900a3f60": [
+    "Carregando solicitação de ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "…"
+  ],
+  "75814e75a6cc6350": "Abra a conversa para responder a esta solicitação.",
+  "b0a7a1902e8c29fe": "Executar plano",
+  "3554fbab5a8480ce": "Aprovação necessária",
+  "6bf21baf07ab5778": "Esta solicitação não pode mais ser respondida aqui.",
+  "5536b6ffc0e02e95": "Enviar resposta",
+  "4ce0c40822ddcc68": "Pergunta antes de qualquer coisa grande ou difícil de desfazer. Decide as pequenas e te avisa.",
+  "ea810dc69d44d054": "Só pergunta quando uma decisão muda o escopo ou o custo.",
+  "3e47d00748d05658": "Nunca para para perguntar. Decide, anota o porquê e relata.",
+  "070e8d2523890f69": "{count, plural, one {{count} thread} other {{count} threads}}",
+  "643a29899cce9419": "Selecionados por padrão: repositórios Git com {count}+ threads nos últimos {days} dias.",
+  "f490ec21c167b25a": "Coordenador principal",
+  "2e2f3c6a94895504": "Buscar memórias",
+  "cd3709902eeef8af": "Salvar uma memória",
+  "2ddab0f9eae830d0": "Conecte um ambiente para ver suas memórias.",
+  "35461bba3e031ddd": "Selecione uma memória.",
+  "7f23b7bb1929c991": "Me atualize sobre este projeto",
+  "946ce353118c3af7": "Descubra o que corrigir em seguida",
+  "39b5f0293a7a1a3d": "Planeje comigo a próxima mudança",
+  "dd19cd06820b987b": "Sou o coordenador deste projeto. Diga o que você quer fazer, e eu executo em threads de tarefa e te conto o resultado.",
+  "e3c450f539deecb9": "Sou o coordenador de {project}. Diga o que você quer fazer, e eu executo em threads de tarefa e te conto o resultado.",
+  "d25661576338fcf0": "Precisa da sua atenção",
+  "7b4c6014fb1af244": "Coordenador",
+  "4d29b1d0ac9480a9": "{action, select, saved {Memória salva} updated {Memória atualizada} other {Memória removida}}",
+  "d56e5b5f32385d0f": "{action, select, saved {Memória salva · {title}} updated {Memória atualizada · {title}} other {Memória removida · {title}}}",
+  "57e7cec8df8de59d": "Contas do coordenador",
+  "58a195a157478a2a": "A seleção por assinatura está desativada.",
+  "8d0f5d10c9c0e878": "Nenhuma assinatura permitida.",
+  "3b83ac2c1d6ca9ae": "Limites de uso",
+  "ea222b75c145ef48": "Todas as contas do Claude estão excluídas, inclusive as adicionadas depois.",
+  "f1cb9edfa92715d5": "Coordenadores",
+  "3eed5f22e5cb32ee": "Adicione um projeto para usar os coordenadores e o Dream.",
+  "1840f8309499d689": "Abrir coordenador do projeto",
+  "108f917b81c7a65d": "Abrir coordenador principal",
+  "f7624725c30391e7": "Iniciar Dream para este projeto",
+  "8fc8ed9b0e258f75": "Coordenadores e caixa de entrada",
+  "38dd049704ace50c": "Início do T3 fork",
+  "db47bb6ae4e361a6": "Atualização pronta, reiniciar",
+  "534806a154a6cb9a": "{count, plural, one {Reiniciar interromperá {count} execução de agente.} other {Reiniciar interromperá {count} execuções de agente.}}",
+  "3e516a6075c1cdae": "Não foi possível reiniciar o aplicativo. Abra este aviso novamente para tentar de novo.",
+  "bd90fd96c98e9c6f": "Reiniciar"
 }
