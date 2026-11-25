@@ -187,7 +187,7 @@ describe("sidebar project folder new thread", () => {
         <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
       </SidebarProvider>,
     );
-    await userEvent.click(screen.getByRole("button", { name: "New thread in acme/demo-repo" }));
+    await userEvent.click(screen.getByRole("button", { name: "New thread in demo-dev1" }));
 
     expect(startThread).toHaveBeenCalledExactlyOnceWith(dev1ProjectRef);
   });
@@ -430,6 +430,7 @@ describe("sidebar thread click", () => {
     );
     const navigate = vi.spyOn(screen.router!, "navigate").mockResolvedValue(undefined);
 
+    await userEvent.click(screen.getByRole("button", { name: "Show threads" }));
     const openRow = screen.getByText("Thread 0").first().element();
     await act(() => {
       openRow.dispatchEvent(
