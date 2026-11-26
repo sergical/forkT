@@ -3,6 +3,8 @@ import {
   ForkCoordinatorError,
   MessageId,
   type ProjectId,
+  type OrchestratorMcpTaskRole,
+  type ModelSelection,
   type ThreadId,
   type ForkCoordinator,
   type ForkCoordinatorOpenInput,
@@ -23,18 +25,20 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 
 import * as Clock from "effect/Clock";
-import {
-  recommendForkRoute,
-  refreshForkRoutingProviders,
-  verifyForkDispatch,
-} from "./forkCoordinatorRouting.ts";
+import { recommendForkRoute, refreshForkRoutingProviders } from "./forkCoordinatorRouting.ts";
+
+type Handoff = {
+  readonly senderThreadId: ThreadId;
+  readonly role?: OrchestratorMcpTaskRole | undefined;
+  readonly highJudgment?: boolean | undefined;
+};
 
 export class ForkCoordinatorService extends Context.Service<
   ForkCoordinatorService,
   {
     readonly open: (
       input: ForkCoordinatorOpenInput,
-      handoff?: { readonly senderThreadId: ThreadId },
+      handoff?: Handoff,
     ) => Effect.Effect<ForkCoordinator, ForkCoordinatorError>;
   }
 >()("t3/project/ForkCoordinatorService") {}
@@ -178,7 +182,7 @@ export const layer = Layer.effect(
       };
     });
     const open = Effect.fn("ForkCoordinatorService.open")(
-      function* (input: ForkCoordinatorOpenInput, handoff?: { readonly senderThreadId: ThreadId }) {
+      function* (input: ForkCoordinatorOpenInput, handoff?: Handoff) {
         const projectId =
           input.projectId ??
           (input.global
@@ -202,9 +206,11 @@ export const layer = Layer.effect(
             message: "Choose a project for its coordinator.",
           });
         const coordinator = yield* ensure({ ...input, projectId });
+        let routing: ForkCoordinator["routing"] = coordinator.routing;
         // Delivered under its own command, never the launch's, so a retry replays it and
         // concurrent first sends each land.
         if (input.message !== undefined) {
+          let selection: ModelSelection | undefined = handoff && input.modelSelection;
           if (handoff !== undefined && !(yield* threads.hasReceipt(input.message.commandId))) {
             const settings = yield* settingsService.getSettings;
             if (settings.forkCoordinatorRouting !== undefined) {
@@ -214,14 +220,30 @@ export const layer = Layer.effect(
                   message: "The project coordinator was not found.",
                 });
               }
-              const route = yield* verifyForkDispatch(
-                providers,
+              const projectSettings = resolveProjectSettings(
                 settings,
                 coordinator.projectId,
-                destination.modelSelection,
-              );
+              ).settings;
+              const pin = input.modelSelection;
+              const routingInput = {
+                providers: yield* providers.getProviders,
+                projectId: coordinator.projectId,
+                settings,
+                role: handoff.role,
+                highJudgment: handoff.highJudgment,
+                defaultSelection: pin ?? destination.modelSelection,
+                fallbackSelection: projectSettings.fallbackModelSelection,
+                target: pin && { providerInstanceId: pin.instanceId, model: pin.model },
+              };
+              const route = recommendForkRoute({
+                ...routingInput,
+                providers: yield* refreshForkRoutingProviders(providers, routingInput),
+                now: yield* Clock.currentTimeMillis,
+              });
               if (route.selection === null)
                 return yield* new ForkCoordinatorError({ message: route.reason });
+              routing = route;
+              selection = route.selection;
             }
           }
           yield* threads.sendToThread({
@@ -234,10 +256,11 @@ export const layer = Layer.effect(
             mode: "queue",
             createdBy: handoff === undefined ? "user" : "agent",
             creationSource: handoff === undefined ? "web" : "mcp",
-            ...handoff,
+            ...(handoff && { senderThreadId: handoff.senderThreadId }),
+            ...(selection && { modelSelection: selection }),
           });
         }
-        return coordinator;
+        return routing ? { ...coordinator, routing } : coordinator;
       },
       Effect.mapError((error) =>
         isCoordinatorError(error)

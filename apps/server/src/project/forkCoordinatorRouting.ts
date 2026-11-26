@@ -225,7 +225,16 @@ export function recommendForkRoute(
       if (model.isCustom && target?.model !== model.slug && defaultSelection?.model !== model.slug)
         return [];
       if (target?.model !== undefined && target.model !== model.slug) return [];
-      const selection = { instanceId: provider.instanceId, model: model.slug };
+      const effort =
+        automatic && highJudgment && provider.driver === "codex"
+          ? model.capabilities?.optionDescriptors?.find(
+              (descriptor) =>
+                descriptor.id === "reasoningEffort" &&
+                descriptor.type === "select" &&
+                descriptor.options.some((option) => option.id === "xhigh"),
+            )
+          : undefined;
+      const selection: ModelSelection = { instanceId: provider.instanceId, model: model.slug };
       const usage = forkRoutingEligibility({ ...input, provider, model: model.slug });
       if (usage.state !== "available" || usage.limitingWindow === undefined) return [];
       const matches = (configured: ModelSelection | null | undefined) =>
@@ -237,6 +246,7 @@ export function recommendForkRoute(
             : fallback !== null && matches(fallbackSelection)
               ? fallbackSelection!
               : selection,
+          effort,
           limitingWindow: usage.limitingWindow,
           rank: modelRouteRank(provider, model.slug, highJudgment),
           configuredFallback: fallback !== null && matches(fallbackSelection),
@@ -273,7 +283,13 @@ export function recommendForkRoute(
         ? "High-judgment work"
         : "Routine work";
   return {
-    selection: best.selection,
+    selection:
+      best.effort && !best.selection.options?.some((option) => option.id === best.effort?.id)
+        ? {
+            ...best.selection,
+            options: [...(best.selection.options ?? []), { id: best.effort.id, value: "xhigh" }],
+          }
+        : best.selection,
     limitingWindow: best.limitingWindow,
     reason: `${basis}. ${best.limitingWindow.remainingPercent}% left in the tightest reported window.`,
   };

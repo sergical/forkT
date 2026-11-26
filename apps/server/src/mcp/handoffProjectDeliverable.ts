@@ -2,6 +2,8 @@ import {
   CommandId,
   isForkMainCoordinatorThreadId,
   OrchestratorMcpFailure,
+  OrchestratorMcpCapabilitiesInput,
+  ModelSelection,
   ProjectId,
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
@@ -14,6 +16,9 @@ import * as McpToolAccess from "./McpToolAccess.ts";
 /** The project and source brief for one deliverable, with a retry key for the current run. */
 export const ProjectDeliverableHandoff = Schema.Struct({
   projectId: ProjectId,
+  role: OrchestratorMcpCapabilitiesInput.fields.role,
+  highJudgment: OrchestratorMcpCapabilitiesInput.fields.highJudgment,
+  modelSelection: Schema.optional(ModelSelection),
   source: TrimmedNonEmptyString.check(Schema.isMaxLength(18000)).annotate({
     description:
       "Original request, relevant decisions, and completion criteria for the project coordinator.",
@@ -51,12 +56,13 @@ export const handoffProjectDeliverable = Effect.fn("fork.project_handoff")(funct
       {
         global: false,
         projectId: input.projectId,
+        ...(input.modelSelection && { modelSelection: input.modelSelection }),
         message: {
           commandId: CommandId.make("project-handoff:" + key),
           text: `From ${origin} for this project. Complete and verify the request here. Report the outcome back to the source thread.\n\n${input.source}`,
         },
       },
-      { senderThreadId: thread.threadId },
+      { senderThreadId: thread.threadId, role: input.role, highJudgment: input.highJudgment },
     )
     .pipe(
       Effect.mapError(

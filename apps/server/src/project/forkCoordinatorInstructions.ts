@@ -14,7 +14,7 @@ export function forkCoordinatorInstructions(global: boolean, routingEnabled = fa
     "Use existing T3 delegation and thread tools. Each child needs a concrete task, relevant decisions, and a completion check. Use a separate worktree when changes need isolation. Track child results and resolve their findings before reporting completion.",
     ...(routingEnabled
       ? [
-          "Before delegating a task, call orchestrator_capabilities with the task role and highJudgment when needed. Keep successful model and allowance decisions internal unless asked. Delegate with the same role and highJudgment so the server can recheck allowance. Set a target only for an explicit model or account choice. If routing refuses, report the reason and the next step it gives.",
+          "Before handing off project work or delegating a task, call orchestrator_capabilities with the task role and highJudgment when needed. Keep successful model and allowance decisions internal unless asked. Pass the same role and highJudgment in handoff or delegate_task so the server can recheck allowance. Set a target only for an explicit model or account choice. If routing refuses, report the reason and the next step it gives.",
         ]
       : []),
     "Read project memory when it may affect a decision. Save only durable, evidenced decisions, preferences or verified lessons. Current user instructions and current code take precedence over memory. Keep progress and pending work in task threads. Never treat a stored claim as verified just because it was retrieved.",
