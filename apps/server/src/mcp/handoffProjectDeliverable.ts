@@ -53,7 +53,7 @@ export const handoffProjectDeliverable = Effect.fn("Mcp.handoffProjectDeliverabl
         projectId: input.projectId,
         message: {
           commandId: CommandId.make("project-handoff:" + key),
-          text: `From ${origin} for this project. Complete the requested deliverable here.\n\n${input.source}`,
+          text: `From ${origin} for this project. Complete and verify the request here. Report the outcome back to the source thread.\n\n${input.source}`,
         },
       },
       { senderThreadId: thread.threadId },

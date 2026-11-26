@@ -12,6 +12,7 @@ import {
   idleCompactionOf,
   isProviderAvailable,
   MessageId,
+  isForkMainCoordinatorThreadId,
   type ModelSelection,
   NodeId,
   ORCHESTRATOR_MCP_RUNNING_TASK_NEXT,
@@ -3060,7 +3061,9 @@ const make = Effect.gen(function* () {
       ) {
         return yield* failure(
           "invalid_request",
-          "A local task runs in this thread's project. Omit target.projectId, or pass target.environmentId to run it in that environment's project.",
+          isForkMainCoordinatorThreadId(parent.thread.id)
+            ? "Pass the target project ID, original request and stable requestId in a t3_coordinator_open handoff with global:false."
+            : "A local task runs in this thread's project. Omit target.projectId, or pass target.environmentId to run it in that environment's project.",
         );
       }
       const parentRun =
