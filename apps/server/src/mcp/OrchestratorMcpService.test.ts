@@ -1,3 +1,6 @@
+import * as ForkCoordinatorService from "../project/ForkCoordinatorService.ts";
+import * as ForkCoordinatorStore from "../project/ForkCoordinatorStore.ts";
+import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
@@ -47,7 +50,10 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
-import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
+import {
+  buildCodexTurnStartParams,
+  CodexProviderCapabilitiesV2,
+} from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as CommandReceiptStore from "../orchestration-v2/CommandReceiptStore.ts";
 import * as EffectWorker from "../orchestration-v2/EffectWorker.ts";
 import * as LegacyV1ThreadImporter from "../orchestration-v2/legacy/LegacyV1ThreadImporter.ts";
@@ -5967,7 +5973,10 @@ describe("OrchestratorMcpService thread stop", () => {
   };
 
   // A provider whose turns run until they are interrupted.
-  const liveAdapter = (cwd: string): ProviderAdapter.ProviderAdapterV2["Service"] => ({
+  const liveAdapter = (
+    cwd: string,
+    received?: ProviderAdapter.ProviderAdapterV2TurnInput[],
+  ): ProviderAdapter.ProviderAdapterV2["Service"] => ({
     instanceId,
     driver,
     getCapabilities: () => Effect.succeed(CodexProviderCapabilitiesV2),
@@ -6012,8 +6021,9 @@ describe("OrchestratorMcpService thread stop", () => {
               updatedAt: now,
             }),
           resumeThread: ({ providerThread }) => Effect.succeed(providerThread),
-          startTurn: (turn) =>
-            Queue.offer(events, {
+          startTurn: (turn) => {
+            received?.push(turn);
+            return Queue.offer(events, {
               type: "provider_turn.updated",
               driver,
               providerTurn: {
@@ -6027,7 +6037,8 @@ describe("OrchestratorMcpService thread stop", () => {
                 startedAt: now,
                 completedAt: null,
               },
-            }).pipe(Effect.asVoid),
+            }).pipe(Effect.asVoid);
+          },
           steerTurn: () => Effect.die("unused"),
           interruptTurn: () => Effect.void,
           respondToRuntimeRequest: () => Effect.die("unused"),
@@ -6037,6 +6048,185 @@ describe("OrchestratorMcpService thread stop", () => {
         };
       }),
   });
+
+  it.effect("routes the project handoff and its workers through the receiving runtime", () =>
+    Effect.gen(function* () {
+      const models = ["gpt-6.2-sol", "gpt-6.2-astra"] as const;
+      const provider: ServerProvider = {
+        instanceId,
+        driver,
+        enabled: true,
+        installed: true,
+        version: null,
+        status: "ready",
+        auth: { status: "authenticated" },
+        checkedAt: "1970-01-01T00:00:00.000Z",
+        slashCommands: [],
+        skills: [],
+        models: models.map((slug) => ({
+          slug,
+          name: slug,
+          isCustom: false,
+          capabilities: {
+            optionDescriptors: [
+              {
+                type: "select",
+                id: "reasoningEffort",
+                label: "Effort",
+                options: ["low", "xhigh"].map((id) => ({ id, label: id })),
+              },
+            ],
+          },
+        })),
+        usageLimits: {
+          checkedAt: "1970-01-01T00:00:00.000Z",
+          windows: [
+            {
+              id: "secondary",
+              label: "Weekly",
+              kind: "weekly",
+              usedPercent: 46,
+              resetsAt: "1970-01-04T04:00:00.000Z",
+            },
+          ],
+        },
+      };
+
+      const projectId = ProjectId.make("routing");
+      const coordinatorId = ThreadId.make("fork:project:routing:1");
+      const cwd = yield* checkpointWorkspace("fork-routing");
+      const received: ProviderAdapter.ProviderAdapterV2TurnInput[] = [];
+      const adapters = ProviderAdapterRegistry.layerSingle(liveAdapter(cwd, received));
+      const db = SqlitePersistence.layerMemory;
+      const engine = ProviderReplayHarness.layerWithRegistry(
+        { name: "fork-routing", runtimePolicyOverride: { cwd } },
+        adapters,
+        { databaseLayer: db, runEffectWorker: false },
+      );
+      const settings = ServerSettings.layerTest({
+        forkCoordinatorRouting: { excludedInstances: [], excludedDrivers: [] },
+      });
+      const threads = ThreadManagementService.layer.pipe(
+        Layer.provideMerge(engine),
+        Layer.provide(settings),
+        Layer.provide(CommandReceiptStore.layer.pipe(Layer.provide(db))),
+      );
+      const services = Layer.mergeAll(ForkCoordinatorService.layer, layerOrchestratorService).pipe(
+        Layer.provideMerge(threads),
+        Layer.provide(
+          Layer.mergeAll(
+            NodeServices.layer,
+            NodeCrypto.layer,
+            adapters,
+            settings,
+            Layer.mock(ForkCoordinatorStore.ForkCoordinatorStore)({
+              get: () => Effect.succeed({ threadId: coordinatorId, projectId } as never),
+            }),
+            Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+            Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: cwd }),
+            Layer.mock(ProviderRegistry.ProviderRegistry)({
+              getProviders: Effect.succeed([provider]),
+            }),
+            Layer.mock(ProjectService.ProjectService)({
+              getById: () => Effect.succeedSome({ id: projectId, workspaceRoot: cwd } as never),
+            }),
+            Layer.mock(SecretRequests.SecretRequests)({}),
+            Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+            Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+          ),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+        const coordinators = yield* ForkCoordinatorService.ForkCoordinatorService;
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService;
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("create"),
+          threadId: coordinatorId,
+          projectId,
+          title: "Existing",
+          modelSelection: { instanceId, model: models[0]! },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: cwd,
+          createdBy: "user",
+          creationSource: "web",
+        });
+        const request = { role: "implementation" as const, highJudgment: true };
+        yield* coordinators.open(
+          {
+            global: false,
+            projectId,
+            message: { commandId: CommandId.make("handoff"), text: "Implement the change" },
+          },
+          { senderThreadId: ThreadId.make("fork:global:1"), ...request },
+        );
+        yield* worker.drain();
+        assert.strictEqual(received[0]?.threadId, coordinatorId);
+        const caller: McpInvocationScope = {
+          ...client,
+          client: undefined,
+          thread: {
+            threadId: coordinatorId,
+            providerSessionId: received[0]!.providerThread.providerSessionId!,
+            providerInstanceId: instanceId,
+          },
+        };
+        for (const target of [
+          undefined,
+          { model: models[0]!, options: [{ id: "reasoningEffort", value: "low" }] },
+        ]) {
+          yield* mcp.delegateTask(caller, {
+            task: "Implement a part",
+            ...request,
+            ...(target && { target }),
+          });
+          yield* worker.drain();
+        }
+        const pin = {
+          instanceId,
+          model: models[0],
+          options: [{ id: "reasoningEffort", value: "low" }],
+        };
+        yield* coordinators.open(
+          {
+            global: false,
+            projectId,
+            modelSelection: pin,
+            message: { commandId: CommandId.make("next-handoff"), text: "Next change" },
+          },
+          { senderThreadId: ThreadId.make("fork:global:1"), ...request },
+        );
+        const projection = yield* orchestrator.getThreadProjection(coordinatorId);
+        assert.deepEqual(
+          projection.runs.map((run) => [run.status, run.modelSelection]),
+          [
+            ["running", received[0]!.modelSelection],
+            ["queued", pin],
+          ],
+        );
+        const starts = yield* Effect.forEach(received, (turn) =>
+          buildCodexTurnStartParams({
+            nativeThreadId: turn.providerThread.id,
+            codexInput: [],
+            modelSelection: turn.modelSelection,
+            runtimePolicy: turn.runtimePolicy,
+          }),
+        );
+        assert.deepEqual(
+          starts.map((params) => [params.model, params.effort]),
+          [
+            [models[1], "xhigh"],
+            [models[1], "xhigh"],
+            [models[0], "low"],
+          ],
+        );
+      }).pipe(Effect.provide(services));
+    }),
+  );
 
   it.effect.each([
     {
