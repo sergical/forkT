@@ -529,6 +529,8 @@ const USAGE_COMMAND_LABELS: Record<
 };
 
 const LATE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+  "thread.jump.1": msg("Main coordinator"),
+  "thread.jump.2": msg("Inbox"),
   "view.reopenClosed": msg("Reopen Closed Tab"),
   "preview.focusUrl": msg("Preview: Focus URL"),
   "preview.find": msg("Preview: Find on Page"),

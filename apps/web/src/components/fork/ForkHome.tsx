@@ -1,5 +1,5 @@
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { isElectron } from "../../env";
@@ -15,12 +15,13 @@ import { ForkOnboarding } from "./ForkOnboarding";
 export function ForkHome() {
   const environmentId = usePrimaryEnvironmentId();
   const navigate = useNavigate();
+  const router = useRouter();
   const open = useAtomCommand(forkMemory.openCoordinator, { reportFailure: false });
   const [failed, setFailed] = useState(false);
 
   const openMain = useEffectEvent((target: EnvironmentId, isLive: () => boolean) => {
     void open({ environmentId: target, input: { global: true } }).then((result) => {
-      if (!isLive()) return;
+      if (!isLive() || router.latestLocation.pathname !== "/") return;
       if (result._tag !== "Success") {
         setFailed(true);
         return;

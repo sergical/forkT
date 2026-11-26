@@ -1553,7 +1553,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const routeRowKey = draftIdByRowKey.has(routeDraftRowKey) ? routeDraftRowKey : routeRowThreadKey;
 
   const mainCoordinator = findMainCoordinatorInSidebar(allThreads, primaryEnvironmentId);
-  const firstThreadJumpIndex = mainCoordinator === undefined ? 0 : 1;
+  const firstThreadJumpIndex = primaryEnvironmentId === null ? 0 : 2;
   const jumpLabelByKey = (() => {
     const mapping = new Map<string, string>();
     for (const [index, rowKey] of orderedRowKeys.entries()) {
@@ -3117,10 +3117,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       handleThreadContextMenu(threadRef, position, source, true),
   );
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the first numbered shortcut must run before focused composer widgets consume it
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the reserved numbered shortcuts run before focused composer widgets consume them
   useEffect(() => {
-    if (mainCoordinator === undefined) return;
-    const onMainCoordinatorShortcut = (event: KeyboardEvent) => {
+    if (primaryEnvironmentId === null) return;
+    const onForkWorkspaceShortcut = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
         event.repeat ||
@@ -3135,14 +3135,30 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         platform: navigator.platform,
         context: threadShortcutContext(routeThreadRef),
       });
-      if (command !== "thread.jump.1") return;
+      if (command !== "thread.jump.1" && command !== "thread.jump.2") return;
       event.preventDefault();
       event.stopPropagation();
-      void navigateToThread(scopeThreadRef(mainCoordinator.environmentId, mainCoordinator.id));
+      if (command === "thread.jump.2") {
+        if (isMobile) setOpenMobile(false);
+        void router.navigate({ to: "/inbox" });
+      } else if (mainCoordinator !== undefined) {
+        void navigateToThread(scopeThreadRef(mainCoordinator.environmentId, mainCoordinator.id));
+      } else {
+        void router.navigate({ to: "/" });
+      }
     };
-    window.addEventListener("keydown", onMainCoordinatorShortcut, true);
-    return () => window.removeEventListener("keydown", onMainCoordinatorShortcut, true);
-  }, [keybindings, mainCoordinator, navigateToThread, routeThreadRef]);
+    window.addEventListener("keydown", onForkWorkspaceShortcut, true);
+    return () => window.removeEventListener("keydown", onForkWorkspaceShortcut, true);
+  }, [
+    isMobile,
+    keybindings,
+    mainCoordinator,
+    navigateToThread,
+    primaryEnvironmentId,
+    routeThreadRef,
+    router,
+    setOpenMobile,
+  ]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to window keydown for thread navigation shortcuts using the current thread list
   useEffect(() => {
@@ -3510,6 +3526,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             <ForkSidebarCoordinators
               environmentId={primaryEnvironmentId}
               main={mainCoordinator}
+              onNavigateInbox={() => {
+                if (isMobile) setOpenMobile(false);
+              }}
+              inboxJumpLabel={
+                showJumpHints ? shortcutLabelForCommand(keybindings, "thread.jump.2") : null
+              }
               jumpLabel={
                 showJumpHints && mainCoordinator
                   ? shortcutLabelForCommand(keybindings, "thread.jump.1")

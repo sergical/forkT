@@ -65,21 +65,21 @@ test(
       workers.set(title, JSON.parse(started.stdout) as { threadId: string });
     }
     await t3.open();
-    await screen.getByRole("button", "Inbox, decisions pending").tap();
-    const dialog = screen.getByRole("dialog", "Inbox");
-    await expect(dialog.getByText("Find the replay boundary.", { exact: false })).toHaveCount(2);
+    await screen.getByRole("link", /^Inbox/).tap();
+    const queue = screen.getByRole("main", { exact: true });
+    await expect(queue.getByText("Find the replay boundary.", { exact: false })).toHaveCount(2);
     await browser
       .locator("section")
       .filter({ hasText: "Plan project · Implement worker" })
       .getByRole("button", "Implement plan")
       .tap();
-    await expect(dialog.getByText("Fixture syntax check passed.", { exact: false })).toBeVisible();
-    await dialog.getByRole("radio", /Accept/).tap();
-    await dialog.getByRole("button", "Send answer").tap();
-    await dialog.getByRole("button", "Request changes").tap();
-    await dialog.getByRole("textbox", "Plan changes").fill("Use a smaller fixture.");
-    await dialog.getByRole("button", "Send changes").tap();
-    await expect(dialog.getByText("No decisions need your attention.")).toBeVisible();
+    await expect(queue.getByText("Fixture syntax check passed.", { exact: false })).toBeVisible();
+    await queue.getByRole("radio", /Accept/).tap();
+    await queue.getByRole("button", "Send answer").tap();
+    await queue.getByRole("button", "Request changes").tap();
+    await queue.getByRole("textbox", "Plan changes").fill("Use a smaller fixture.");
+    await queue.getByRole("button", "Send changes").tap();
+    await expect(queue.getByText("No decisions need your attention.")).toBeVisible();
 
     await t3.open(workers.get("Implement worker")!);
     await expect(

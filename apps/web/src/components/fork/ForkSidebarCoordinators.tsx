@@ -6,11 +6,12 @@ import {
   type ProjectId,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
-import { GitForkIcon } from "lucide-react";
+import { GitForkIcon, InboxIcon } from "lucide-react";
 import { useGT } from "gt-react";
 import { useState } from "react";
 import { JumpHintBadge } from "../sidebar/SidebarThreadRow";
-import { ForkInboxButton } from "./ForkDecisionInbox";
+import { Link } from "@tanstack/react-router";
+import { useInboxDecisionCount } from "./ForkDecisionInbox";
 
 import { cn } from "../../lib/utils";
 import { forkMemory } from "../../state/forkMemory";
@@ -44,6 +45,8 @@ export function findMainCoordinatorInSidebar(
 export function ForkSidebarCoordinators(props: {
   readonly environmentId: EnvironmentId | null;
   readonly main: EnvironmentThreadShell | undefined;
+  readonly onNavigateInbox: () => void;
+  readonly inboxJumpLabel: string | null;
   readonly jumpLabel: string | null;
   readonly routeRowThreadKey: string | null;
   readonly onOpenThread: (threadRef: ScopedThreadRef) => void;
@@ -66,7 +69,7 @@ export function ForkSidebarCoordinators(props: {
   };
 
   return (
-    <div className="mb-2 flex items-center gap-1" data-testid="fork-sidebar-coordinators">
+    <div className="mb-2 flex flex-col gap-1" data-testid="fork-sidebar-coordinators">
       <button
         type="button"
         aria-current={active ? "page" : undefined}
@@ -87,8 +90,40 @@ export function ForkSidebarCoordinators(props: {
         <span className="min-w-0 flex-1 truncate font-medium">{gt("Main coordinator")}</span>
         {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
       </button>
-      {props.environmentId && <ForkInboxButton environmentId={props.environmentId} />}
+      {props.environmentId && (
+        <ForkInboxRow
+          environmentId={props.environmentId}
+          jumpLabel={props.inboxJumpLabel}
+          onNavigate={props.onNavigateInbox}
+        />
+      )}
     </div>
+  );
+}
+
+function ForkInboxRow({
+  environmentId,
+  jumpLabel,
+  onNavigate,
+}: {
+  onNavigate: () => void;
+  environmentId: EnvironmentId;
+  jumpLabel: string | null;
+}) {
+  const gt = useGT();
+  const count = useInboxDecisionCount(environmentId);
+  return (
+    <Link
+      to="/inbox"
+      onClick={onNavigate}
+      className={rowClassName(false)}
+      activeProps={{ className: rowClassName(true) }}
+    >
+      <InboxIcon aria-hidden className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1 truncate">{gt("Inbox")}</span>
+      {count > 0 && <span className="text-xs tabular-nums">{count}</span>}
+      {jumpLabel && <JumpHintBadge label={jumpLabel} />}
+    </Link>
   );
 }
 

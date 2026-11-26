@@ -27,90 +27,101 @@ import {
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { newMessageId } from "~/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { InboxIcon } from "lucide-react";
+import { Atom } from "effect/reactivity";
+import { useAtomValue } from "@effect/atom-react";
 import { T, useGT, useMessages, Var } from "gt-react";
 import { useRef, useState, type ReactNode } from "react";
-import { useProjects, useQuietThreadProjection, useQuietThreadShells } from "../../state/entities";
+import { useProjects, useQuietThreadProjection } from "../../state/entities";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { useEnvironmentScope } from "../../state/session";
-import { threadEnvironment } from "../../state/threads";
+import {
+  environmentThreadDetails,
+  environmentThreadShells,
+  threadEnvironment,
+} from "../../state/threads";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { ComposerPendingApprovalActions } from "../chat/ComposerPendingApprovalActions";
 import { ProposedPlanCard } from "../chat/ProposedPlanCard";
 import { PLAN_IMPLEMENTATION_PROMPT_PREFIX } from "../../proposedPlan";
 import { Button } from "../ui/button";
-import {
-  Dialog,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-  DialogTrigger,
-} from "../ui/dialog";
 import { Textarea } from "../ui/textarea";
 
-function useInboxThreads(environmentId: EnvironmentId, projectId: ProjectId | null) {
-  return useQuietThreadShells().filter(
-    (thread) =>
-      thread.environmentId === environmentId &&
-      thread.archivedAt == null &&
-      thread.deletedAt == null &&
-      (projectId === null || projectId === thread.projectId) &&
-      (thread.hasPendingApprovals ||
-        thread.hasPendingUserInput ||
-        thread.hasActionableProposedPlan),
+function isInboxThread(thread: EnvironmentThreadShell) {
+  return (
+    thread.archivedAt == null &&
+    thread.deletedAt == null &&
+    (thread.hasPendingApprovals ||
+      thread.hasPendingUserInput ||
+      thread.hasActionableProposedPlan ||
+      thread.source.pendingRuntimeRequest?.userOnly === true)
   );
 }
 
-export function ForkInboxButton({ environmentId }: { environmentId: EnvironmentId }) {
-  const gt = useGT();
-  const pending = useInboxThreads(environmentId, null).length > 0;
-  const [open, setOpen] = useState(false);
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={pending ? gt("Inbox, decisions pending") : gt("Inbox")}
-          />
-        }
-      >
-        <InboxIcon className="size-4" />
-        <T>Inbox</T>
-        {pending && <span aria-hidden="true" className="size-1.5 rounded-full bg-primary" />}
-      </DialogTrigger>
-      <DialogPopup>
-        <DialogHeader>
-          <DialogTitle>
-            <T>Inbox</T>
-          </DialogTitle>
-        </DialogHeader>
-        <DialogPanel>
-          <ForkDecisionInbox
-            environmentId={environmentId}
-            projectId={null}
-            onOpenOrigin={() => setOpen(false)}
-          />
-        </DialogPanel>
-      </DialogPopup>
-    </Dialog>
+type InboxProjection = NonNullable<ReturnType<typeof useQuietThreadProjection>>["projection"];
+
+function inboxDecisions(thread: EnvironmentThreadShell, projection: InboxProjection) {
+  const pending = derivePendingThreadRequests(projection);
+  const approvals = pending.approvals.filter((approval) => approval.responseCapability === "live");
+  const userInputs = pending.userInputs.filter(
+    (prompt) => prompt.responseCapability !== "not_resumable",
   );
+  const plans = projection.plans.filter(
+    (plan): plan is Extract<OrchestrationV2PlanArtifact, { kind: "proposed_plan" }> =>
+      plan.kind === "proposed_plan" && plan.status === "active",
+  );
+  const sourceRequest = thread.source.pendingRuntimeRequest;
+  const sourceOnly =
+    sourceRequest?.userOnly === true &&
+    !approvals.some((item) => item.requestId === sourceRequest.id) &&
+    !userInputs.some((item) => item.requestId === sourceRequest.id);
+  return { approvals, userInputs, plans, sourceOnly };
+}
+
+const inboxThreadsAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get) =>
+    get(environmentThreadShells.threadRefsAtom).flatMap((ref) => {
+      if (ref.environmentId !== environmentId) return [];
+      const thread = get(environmentThreadShells.quietThreadShellAtom(ref));
+      return thread !== null && isInboxThread(thread) ? [thread] : [];
+    }),
+  ),
+);
+
+const decisionCountAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get) => {
+    let count = 0;
+    for (const thread of get(inboxThreadsAtom(environmentId))) {
+      const ref = scopeThreadRef(environmentId, thread.id);
+      const projection = get(environmentThreadDetails.quietThreadAtom(ref))?.projection;
+      if (projection === undefined) continue;
+      const items = inboxDecisions(thread, projection);
+      count +=
+        items.approvals.length +
+        items.userInputs.length +
+        items.plans.length +
+        Number(items.sourceOnly);
+    }
+    return count;
+  }),
+);
+
+/** Counts the same requests that the Inbox renders, including hidden worker threads. */
+export function useInboxDecisionCount(environmentId: EnvironmentId) {
+  return useAtomValue(decisionCountAtom(environmentId));
 }
 
 export function ForkDecisionInbox({
   environmentId,
   projectId,
-  onOpenOrigin,
 }: {
   environmentId: EnvironmentId;
   projectId: ProjectId | null;
-  onOpenOrigin?: (() => void) | undefined;
 }) {
   const projects = useProjects();
   const [recorded, setRecorded] = useState<{ message: string } | null>(null);
-  const candidates = useInboxThreads(environmentId, projectId);
+  const threads = useAtomValue(inboxThreadsAtom(environmentId));
+  const candidates =
+    projectId === null ? threads : threads.filter((thread) => thread.projectId === projectId);
   return (
     <div className="divide-y">
       {recorded && (
@@ -128,7 +139,6 @@ export function ForkDecisionInbox({
           key={thread.id}
           thread={thread}
           onRecorded={(message) => setRecorded({ message })}
-          onOpenOrigin={onOpenOrigin}
           projectName={
             projects.find(
               (project) =>
@@ -144,13 +154,11 @@ export function ForkDecisionInbox({
 function InboxThread({
   thread,
   projectName,
-  onOpenOrigin,
   onRecorded,
 }: {
   thread: EnvironmentThreadShell;
   projectName: string | undefined;
   onRecorded: (message: string) => void;
-  onOpenOrigin: (() => void) | undefined;
 }) {
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const projection = useQuietThreadProjection(threadRef)?.projection;
@@ -163,12 +171,11 @@ function InboxThread({
       </p>
     );
   }
-  const { approvals, userInputs } = derivePendingThreadRequests(projection);
+  const { approvals, userInputs, plans, sourceOnly } = inboxDecisions(thread, projection);
   const origin = (
     <Link
       to="/$environmentId/$threadId"
       params={buildThreadRouteParams(threadRef)}
-      onClick={onOpenOrigin}
       className="text-xs text-muted-foreground hover:underline"
     >
       {projectName && projectName !== thread.title
@@ -178,7 +185,7 @@ function InboxThread({
   );
   return (
     <div className="divide-y">
-      {thread.source.pendingRuntimeRequest?.userOnly && (
+      {sourceOnly && (
         <section className="space-y-2 py-3">
           {origin}
           <p className="text-sm">
@@ -204,23 +211,21 @@ function InboxThread({
           onRecorded={onRecorded}
         />
       ))}
-      {projection.plans.map((plan) =>
-        plan.kind === "proposed_plan" && plan.status === "active" ? (
-          <InboxPlan
-            key={plan.id}
-            plan={plan}
-            onRecorded={onRecorded}
-            markdown={
-              projection.turnItems.flatMap((item) =>
-                item.type === "proposed_plan" && item.planId === plan.id ? [item.markdown] : [],
-              )[0] ?? plan.markdown
-            }
-            thread={thread}
-            threadRef={threadRef}
-            origin={origin}
-          />
-        ) : null,
-      )}
+      {plans.map((plan) => (
+        <InboxPlan
+          key={plan.id}
+          plan={plan}
+          onRecorded={onRecorded}
+          markdown={
+            projection.turnItems.flatMap((item) =>
+              item.type === "proposed_plan" && item.planId === plan.id ? [item.markdown] : [],
+            )[0] ?? plan.markdown
+          }
+          thread={thread}
+          threadRef={threadRef}
+          origin={origin}
+        />
+      ))}
     </div>
   );
 }

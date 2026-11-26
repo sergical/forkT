@@ -4,7 +4,7 @@ import { T3_HOME } from "../e2e.config.ts";
 import { environmentId, rpcClient, runPromise, test, WEB } from "./t3.ts";
 
 test(
-  "The first numbered shortcut opens the existing main coordinator",
+  "Reserved shortcuts open Main and Inbox before ordinary threads",
   WEB,
   async ({ t3, app, browser, screen }) => {
     const worker = await t3.thread({
@@ -28,6 +28,11 @@ test(
           when: "!modelPickerOpen && isWeb",
         });
         yield* client["server.upsertKeybinding"]({
+          key: "mod+3",
+          command: "thread.jump.3",
+          when: "!modelPickerOpen && isWeb",
+        });
+        yield* client["server.upsertKeybinding"]({
           key: "mod+alt+g",
           command: "thread.jump.1",
           when: "isWeb",
@@ -45,12 +50,17 @@ test(
     await browser.keyboard.press("ControlOrMeta+1");
     await expect(browser).toHaveURL(mainUrl);
 
+    await app.open(`/${environment}/${encodeURIComponent(worker.threadId)}`);
+    await screen.getByRole("textbox", "Message Project worker").tap();
+    await browser.keyboard.press("ControlOrMeta+2");
+    await expect(browser).toHaveURL(/\/inbox$/);
+
     await app.open("/settings/general");
     await expect(screen.getByRole("dialog", "Settings")).toBeVisible();
-    await browser.keyboard.press("ControlOrMeta+1");
-    await expect(browser).toHaveURL(mainUrl);
-    await screen.getByRole("button", "Show threads").tap();
     await browser.keyboard.press("ControlOrMeta+2");
+    await expect(browser).toHaveURL(/\/inbox$/);
+    await screen.getByRole("button", "Show threads").tap();
+    await browser.keyboard.press("ControlOrMeta+3");
     await expect(browser).toHaveURL(
       new RegExp(`/${environment}/${encodeURIComponent(worker.threadId)}$`),
     );

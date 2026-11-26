@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { CommandId, type EnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { T, useGT } from "gt-react";
 import { useState } from "react";
 import { randomUUID } from "../../lib/utils";
@@ -85,7 +85,16 @@ export function ForkThreadTools() {
         <h2 className="text-lg font-medium">
           <T>Inbox</T>
         </h2>
-        <ForkDecisionInbox environmentId={selected.environmentId} projectId={selected.projectId} />
+        {selected.projectId === null && selected.environmentId === primaryEnvironmentId ? (
+          <Link to="/inbox" className="text-sm underline">
+            {gt("Inbox")}
+          </Link>
+        ) : (
+          <ForkDecisionInbox
+            environmentId={selected.environmentId}
+            projectId={selected.projectId}
+          />
+        )}
       </section>
     </div>
   );
