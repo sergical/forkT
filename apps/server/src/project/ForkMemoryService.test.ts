@@ -249,7 +249,7 @@ it.effect("bounds memory context and keeps retry selection stable while honoring
         return span;
       },
     });
-    yield* memory.save(input);
+    yield* memory.save(input).pipe(Effect.withTracer(tracer));
     const request = { projectId, runId: RunId.make("memory-run"), query: "payment retries" };
     const first = yield* memory.brief(request).pipe(Effect.withTracer(tracer));
     assert.include(first, "idempotency key");
@@ -289,6 +289,13 @@ it.effect("bounds memory context and keeps retry selection stable while honoring
     assert.deepStrictEqual(
       briefs.map((span) => span.attributes.get("fork.memory.selected_count")),
       [1, 0],
+    );
+    const saved = spans.find((span) => span.name === "fork.memory.save")!;
+    const version = saved.attributes.get("fork.memory.version_ref");
+    assert.isString(version);
+    assert.deepStrictEqual(
+      briefs.map((span) => span.attributes.get("fork.memory.selected_version_refs")),
+      [[version], []],
     );
     const attributes = JSON.stringify(briefs.map((span) => Object.fromEntries(span.attributes)));
     for (const privateValue of [request.query, request.runId, input.id, input.title, input.body]) {

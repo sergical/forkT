@@ -8,6 +8,7 @@ import type {
   OrchestrationV2StoredEvent,
   OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
+import { hashTelemetryId } from "@t3tools/shared/telemetryId";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -19,6 +20,7 @@ import * as Stream from "effect/Stream";
 import * as Tracer from "effect/Tracer";
 
 import * as ServerConfig from "../config.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as EventStore from "../orchestration-v2/EventStore.ts";
@@ -129,7 +131,16 @@ interface OpenRun {
   readonly attributes: Record<string, unknown>;
 }
 
-export const make = Effect.gen(function* () {
+export const make = Effect.fnUntraced(function* (environmentId: string) {
+  const environmentRef = hashTelemetryId(environmentId);
+  // Fork-owned thread IDs such as fork:global:1 repeat on fresh installations.
+  const conversationAttributes = (threadId: string) => ({
+    "gen_ai.conversation.id": threadId.startsWith("fork:")
+      ? hashTelemetryId(JSON.stringify([environmentId, threadId]))
+      : threadId,
+    "t3.thread.id": threadId,
+    "t3.environment.ref": environmentRef,
+  });
   const tracer = yield* Effect.tracer;
   const runs = new Map<string, OpenRun>();
   // Finished runs, so tools and subagents that end after their run still join it.
@@ -200,8 +211,7 @@ export const make = Effect.gen(function* () {
       const shared = {
         "gen_ai.provider.name": providerName(run.providerInstanceId),
         "gen_ai.request.model": model,
-        "gen_ai.conversation.id": run.threadId,
-        "t3.thread.id": run.threadId,
+        ...conversationAttributes(run.threadId),
         "t3.run.id": run.id,
       };
       const span = start(
@@ -369,7 +379,7 @@ export const make = Effect.gen(function* () {
       message.updatedAt,
       false,
       {
-        "gen_ai.conversation.id": message.threadId,
+        ...conversationAttributes(message.threadId),
         "t3.run.id": message.runId,
         "sentry.op": "gen_ai.message",
         [user ? "gen_ai.input.messages" : "gen_ai.output.messages"]: JSON.stringify([
@@ -391,7 +401,10 @@ export const layer = Layer.effectDiscard(
     const recordingSince = yield* DateTime.now;
     let last = yield* (yield* EventStore.EventStoreV2).latestSequence();
     const projection = yield* ProjectionStore.ProjectionStoreV2;
-    const tracing = yield* make;
+    const identity = yield* ServerEnvironment.ServerEnvironmentIdentity.use(
+      (service) => service.getEnvironmentId,
+    ).pipe(Effect.provide(ServerEnvironment.layerIdentity));
+    const tracing = yield* make(identity);
     const onStored = (stored: OrchestrationV2StoredEvent) =>
       Effect.suspend(() => {
         last = stored.sequence;

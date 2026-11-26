@@ -64,7 +64,9 @@ it.effect("turns one run's events into gen_ai spans under the request that sent 
       return yield* Effect.currentSpan;
     }).pipe(Effect.withSpan("ws.rpc.orchestration.dispatchCommand"), Effect.withTracer(tracer));
 
-    const tracing = yield* ForkAgentTracing.make.pipe(Effect.withTracer(tracer));
+    const tracing = yield* ForkAgentTracing.make("test-environment").pipe(
+      Effect.withTracer(tracer),
+    );
     tracing.onEvent(stored(run("running", null)));
     tracing.onEvent(
       stored({
@@ -163,7 +165,9 @@ it.effect("keeps late tools on their finished run and ignores re-saved old recor
         return span;
       },
     });
-    const tracing = yield* ForkAgentTracing.make.pipe(Effect.withTracer(tracer));
+    const tracing = yield* ForkAgentTracing.make("test-environment").pipe(
+      Effect.withTracer(tracer),
+    );
     tracing.onEvent(stored(run("running", null)));
     tracing.onEvent(stored(run("completed", 1_000)));
     const background = {
@@ -217,7 +221,9 @@ it.effect(
           return span;
         },
       });
-      const tracing = yield* ForkAgentTracing.make.pipe(Effect.withTracer(tracer));
+      const tracing = yield* ForkAgentTracing.make("test-environment").pipe(
+        Effect.withTracer(tracer),
+      );
       const item = (id: number) =>
         stored({
           type: "turn-item.updated",
@@ -247,7 +253,9 @@ it.effect("shares only new visible messages from the conversation that opted in"
         return span;
       },
     });
-    const tracing = yield* ForkAgentTracing.make.pipe(Effect.withTracer(tracer));
+    const tracing = yield* ForkAgentTracing.make("test-environment").pipe(
+      Effect.withTracer(tracer),
+    );
     const threadId = ThreadId.make("chosen");
     const share = (
       id: string,
@@ -306,5 +314,31 @@ it.effect("shares only new visible messages from the conversation that opted in"
         [undefined, JSON.stringify([{ role: "assistant", content: "visible-answer" }])],
       ],
     );
+  }),
+);
+
+it.effect("keeps identically named Main conversations from separate environments apart", () =>
+  Effect.gen(function* () {
+    const main = run("completed", 1000);
+    main.payload.threadId = "fork:global:1";
+    const conversations: unknown[] = [];
+    const tracer = Tracer.make({
+      span(options) {
+        const span = new Tracer.NativeSpan(options);
+        const end = span.end.bind(span);
+        span.end = (time, exit) => {
+          conversations.push(span.attributes.get("gen_ai.conversation.id"));
+          end(time, exit);
+        };
+        return span;
+      },
+    });
+    for (const environment of ["first", "second", "first"]) {
+      const tracing = yield* ForkAgentTracing.make(environment).pipe(Effect.withTracer(tracer));
+      tracing.onEvent(stored(main));
+    }
+    assert.isString(conversations[0]);
+    assert.notStrictEqual(conversations[0], conversations[1]);
+    assert.strictEqual(conversations[0], conversations[2]);
   }),
 );

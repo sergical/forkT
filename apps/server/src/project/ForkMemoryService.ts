@@ -81,6 +81,12 @@ const traceScope = (projectId: ForkMemoryKey["projectId"]) =>
     : projectId === MAIN_COORDINATOR_MEMORY_SCOPE
       ? "main"
       : "project";
+const versionRef = ({
+  projectId,
+  id,
+  revision,
+}: Pick<ForkMemory, "projectId" | "id" | "revision">) =>
+  hashTelemetryId(JSON.stringify([projectId, id, revision]));
 const storageError = (cause: unknown) =>
   isMemoryError(cause) ? cause : new ForkMemoryError({ reason: "storage", cause });
 
@@ -111,6 +117,7 @@ const make = Effect.gen(function* () {
     yield* Effect.annotateCurrentSpan({
       "fork.memory.found": memory !== null,
       ...(memory && {
+        "fork.memory.version_ref": versionRef(memory),
         "fork.memory.revision": memory.revision,
         "fork.memory.source_count": memory.sources.length,
       }),
@@ -275,6 +282,7 @@ const make = Effect.gen(function* () {
     );
     yield* Effect.annotateCurrentSpan({
       "fork.memory.receipt_reused": reused,
+      "fork.memory.selected_version_refs": selection.references.map(versionRef),
       "fork.memory.selected_count": selection.references.length,
       "fork.memory.personal_selected_count": selection.references.filter(
         (ref) => ref.projectId === null,
@@ -375,6 +383,7 @@ const make = Effect.gen(function* () {
     );
     yield* Effect.annotateCurrentSpan({
       "fork.memory.replayed": replayed,
+      "fork.memory.version_ref": versionRef(memory),
       "fork.memory.revision": memory.revision,
       "fork.memory.source_count": memory.sources.length,
       "fork.memory.kind": memory.kind,
