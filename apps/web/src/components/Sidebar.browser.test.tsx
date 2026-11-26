@@ -54,8 +54,8 @@ vi.mock(import("../state/server"), async (original) => {
   const { compileResolvedKeybindingsConfig } = await import("@t3tools/shared/keybindings");
   // The desktop defaults: holding Mod alone already matches a thread jump.
   const keybindings = compileResolvedKeybindingsConfig([
-    { key: "mod+1", command: "thread.jump.1" },
-    { key: "mod+2", command: "thread.jump.2" },
+    { key: "mod+3", command: "thread.jump.3" },
+    { key: "mod+4", command: "thread.jump.4" },
     { key: "mod+shift+[", command: "thread.previous" },
   ]);
   return { ...(await original()), primaryServerKeybindingsAtom: Atom.make(keybindings) };
@@ -234,9 +234,9 @@ describe("sidebar numbered jumps", () => {
     await expect.element(draftRow).toBeInTheDocument();
     await expect.element(screen.getByText("Thread 0").first()).toBeInTheDocument();
     await userEvent.keyboard("{Control>}");
-    await expect.element(screen.getByText("Ctrl+1")).toBeVisible();
-    await expect.element(draftRow.getByText("Ctrl+1")).toBeVisible();
-    await expect.element(screen.getByText("Ctrl+2")).toBeVisible();
+    await expect.element(screen.getByText("Ctrl+3")).toBeVisible();
+    await expect.element(draftRow.getByText("Ctrl+3")).toBeVisible();
+    await expect.element(screen.getByText("Ctrl+4")).toBeVisible();
     await userEvent.keyboard("{/Control}");
 
     // Previous thread from the open thread steps up to the draft above it.
@@ -244,11 +244,11 @@ describe("sidebar numbered jumps", () => {
     await vi.waitFor(() =>
       expect(screen.router!.state.location.pathname).toBe(`/draft/${draftId}`),
     );
-    await userEvent.keyboard("{Control>}2{/Control}");
+    await userEvent.keyboard("{Control>}4{/Control}");
     await vi.waitFor(() =>
       expect(screen.router!.state.location.pathname).not.toBe(`/draft/${draftId}`),
     );
-    await userEvent.keyboard("{Control>}1{/Control}");
+    await userEvent.keyboard("{Control>}3{/Control}");
     await vi.waitFor(() =>
       expect(screen.router!.state.location.pathname).toBe(`/draft/${draftId}`),
     );
