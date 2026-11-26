@@ -21,6 +21,7 @@ export type ThreadActionMenuId =
   | `snooze:${string}`
   | "unsnooze"
   | "rename"
+  | "capture-sentry-text"
   | "regenerate-title"
   | "mark-unread"
   | "share-guest"
@@ -107,6 +108,7 @@ export interface ThreadActionMenuState {
   } | null;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
+  readonly captureSentryText?: boolean;
   readonly autoSettleEnabled: boolean;
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
@@ -236,6 +238,15 @@ export function buildThreadActionMenuItems(
       : []),
     ...(state.hasCompletedRun && !state.isRunning
       ? [{ id: "mark-unread" as const, label: resolve(msg("Mark unread")), icon: "mail-open" }]
+      : []),
+    ...(state.canOperate && state.captureSentryText !== undefined
+      ? [
+          {
+            id: "capture-sentry-text" as const,
+            label: resolve(msg("Send new messages and replies to Sentry")),
+            checked: state.captureSentryText,
+          },
+        ]
       : []),
     ...(state.canShareWithGuest
       ? [{ id: "share-guest" as const, label: resolve(msg("Share with guest")), icon: "user-plus" }]

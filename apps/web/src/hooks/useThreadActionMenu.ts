@@ -37,6 +37,7 @@ import { readEnvironmentScope } from "../state/session";
 import {
   readEnvironmentServerConfigLoaded,
   readEnvironmentSupportsAutoSettleOptOut,
+  readEnvironmentSupportsSentryText,
   readThreadShell,
   useProjects,
 } from "../state/entities";
@@ -96,6 +97,7 @@ export function useThreadActionMenu(input: {
     markThreadUnread,
     turnThreadIntoProject,
   } = useThreadActions();
+  const updateMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata);
   const regenerateThreadTitle = useOrchestrationCommand(threadEnvironment.regenerateTitle, {
     reportFailure: false,
   });
@@ -143,6 +145,9 @@ export function useThreadActionMenu(input: {
       projectFilter: null,
       isPinned: thread.pinnedAt != null,
       isSettled: supports.settlement && thread.settledOverride === "settled",
+      ...(readEnvironmentSupportsSentryText(thread.environmentId)
+        ? { captureSentryText: thread.sentryTextConsent?.threadId === thread.id }
+        : {}),
       autoSettleEnabled: thread.autoSettleDisabledAt == null,
       isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
       canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
@@ -257,6 +262,15 @@ export function useThreadActionMenu(input: {
           return;
         case "rename":
           onStartRename?.();
+          return;
+        case "capture-sentry-text":
+          await updateMetadata({
+            environmentId: threadRef.environmentId,
+            input: {
+              threadId: thread.id,
+              captureSentryText: thread.sentryTextConsent?.threadId !== thread.id,
+            },
+          });
           return;
         case "regenerate-title": {
           if (isRegeneratingTitle) return;

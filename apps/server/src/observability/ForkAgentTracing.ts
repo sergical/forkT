@@ -1,4 +1,6 @@
 import type {
+  OrchestrationV2AppThread,
+  OrchestrationV2ConversationMessage,
   OrchestrationV2DomainEvent,
   OrchestrationV2ProviderTurn,
   OrchestrationV2Run,
@@ -18,6 +20,7 @@ import * as Tracer from "effect/Tracer";
 
 import * as ServerConfig from "../config.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as EventStore from "../orchestration-v2/EventStore.ts";
 
 /**
@@ -119,9 +122,6 @@ const toolName = (item: OrchestrationV2TurnItem): string | undefined => {
       return undefined;
   }
 };
-
-const toolInput = (item: OrchestrationV2TurnItem) =>
-  item.type === "command_execution" || item.type === "dynamic_tool" ? clip(item.input) : undefined;
 
 interface OpenRun {
   readonly span: Tracer.Span;
@@ -289,7 +289,6 @@ export const make = Effect.gen(function* () {
       "sentry.op": "gen_ai.execute_tool",
       "gen_ai.operation.name": "execute_tool",
       "gen_ai.tool.name": name,
-      "gen_ai.tool.input": toolInput(item),
       "t3.subagent.thread.id":
         item.type === "subagent" ? (item.childThreadId ?? undefined) : undefined,
     });
@@ -329,7 +328,53 @@ export const make = Effect.gen(function* () {
     }
   };
 
-  return { onEvent };
+  const captureMessage = (
+    message: OrchestrationV2ConversationMessage,
+    consent: OrchestrationV2AppThread["sentryTextConsent"],
+  ) => {
+    if (
+      consent?.threadId !== message.threadId ||
+      message.runId === null ||
+      !(DateTime.toEpochMillis(message.createdAt) > Date.parse(consent.since)) ||
+      message.streaming ||
+      !message.text ||
+      message.notification ||
+      message.scheduledTaskId ||
+      message.senderThreadId ||
+      message.linkedSender ||
+      message.workflowScript ||
+      message.idleCompaction ||
+      message.delegatedCompletion ||
+      traced.has(`message:${message.id}`)
+    )
+      return;
+    const user =
+      message.role === "user" &&
+      message.createdBy === "user" &&
+      (message.creationSource === "web" || message.creationSource === "mobile");
+    const assistant =
+      message.role === "assistant" &&
+      message.createdBy === "agent" &&
+      message.creationSource === "provider";
+    if (!user && !assistant) return;
+    markTraced(`message:${message.id}`);
+    complete(
+      `fork.message ${message.role}`,
+      message.runId,
+      message.createdAt,
+      message.updatedAt,
+      false,
+      {
+        "gen_ai.conversation.id": message.threadId,
+        "t3.run.id": message.runId,
+        "sentry.op": "gen_ai.message",
+        [user ? "gen_ai.input.messages" : "gen_ai.output.messages"]: JSON.stringify([
+          { role: message.role, content: message.text },
+        ]),
+      },
+    );
+  };
+  return { onEvent, captureMessage };
 });
 
 export const layer = Layer.effectDiscard(
@@ -338,13 +383,29 @@ export const layer = Layer.effectDiscard(
     if (config.forkSentry === undefined) return;
     startRecordingOrigins();
     const sink = yield* EventSink.EventSinkV2;
+    const recordingSince = yield* DateTime.now;
     let last = yield* (yield* EventStore.EventStoreV2).latestSequence();
+    const projection = yield* ProjectionStore.ProjectionStoreV2;
     const tracing = yield* make;
     const onStored = (stored: OrchestrationV2StoredEvent) =>
       Effect.suspend(() => {
         last = stored.sequence;
         try {
           tracing.onEvent(stored);
+          const event = stored.event;
+          if (
+            config.forkSentry?.sampleTraces &&
+            event.type === "message.updated" &&
+            DateTime.isGreaterThan(event.payload.createdAt, recordingSince) &&
+            !event.payload.streaming &&
+            !isStale(event.payload.updatedAt, event.occurredAt)
+          ) {
+            const message = event.payload;
+            return projection.findThread(message.threadId).pipe(
+              Effect.map((thread) => tracing.captureMessage(message, thread?.sentryTextConsent)),
+              Effect.ignore,
+            );
+          }
           return Effect.void;
         } catch (defect) {
           return Effect.logWarning("Fork agent tracing skipped an event", {

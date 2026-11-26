@@ -5232,6 +5232,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return {
             ...thread,
             ...(command.title === undefined ? {} : { title: command.title, titleRenamed: true }),
+            ...(command.captureSentryText === undefined
+              ? {}
+              : {
+                  sentryTextConsent: command.captureSentryText
+                    ? { threadId: thread.id, since: DateTime.formatIso(now) }
+                    : null,
+                }),
             ...(command.limitRecovery === undefined ? {} : { limitRecovery }),
             ...(command.limitRecovery !== undefined &&
             limitRecovery?.snooze === true &&
