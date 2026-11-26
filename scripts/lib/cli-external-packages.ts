@@ -5,7 +5,10 @@ const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "@cursor/sdk",
   // Playwright reads package.json and browsers.json beside its runtime modules.
   "playwright-core",
-  "@sentry/profiling-node",
+  "@sentry/node-cpu-profiler",
+  "detect-libc",
+  "node-abi",
+  "semver",
   "node-pty",
   "ffi-rs",
   "@yuuang/",

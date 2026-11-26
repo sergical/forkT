@@ -78,6 +78,7 @@
         "@effect/platform-node-shared",
         "@t3tools/web",
         "@napi-rs/keyring",
+        "@sentry/node-cpu-profiler",
         "ffi-rs",
         "transcribe-cpp",
       ],

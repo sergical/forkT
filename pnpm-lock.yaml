@@ -886,6 +886,9 @@ importers:
       '@sentry/node':
         specifier: 11.10.0
         version: 11.10.0
+      '@sentry/node-cpu-profiler':
+        specifier: 2.4.4
+        version: 2.4.4
       '@sentry/profiling-node':
         specifier: 11.10.0
         version: 11.10.0

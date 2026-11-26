@@ -1532,8 +1532,7 @@ const rebuildMacServerProfiler = Effect.fn("rebuildMacServerProfiler")(function*
 ) {
   const path = yield* Path.Path;
   const stageRequire = NodeModule.createRequire(path.join(stageAppDir, "package.json"));
-  const profilerRequire = NodeModule.createRequire(stageRequire.resolve("@sentry/profiling-node"));
-  const bindingsPackage = profilerRequire.resolve("@sentry/node-cpu-profiler/package.json");
+  const bindingsPackage = stageRequire.resolve("@sentry/node-cpu-profiler/package.json");
   const buildScript = NodeModule.createRequire(import.meta.url).resolve("node-gyp/bin/node-gyp.js");
   yield* runCommand(
     ChildProcess.make(
@@ -1872,8 +1871,8 @@ const buildDesktopBundlesUnlocked = Effect.fn("buildDesktopBundlesUnlocked")(fun
   repoRoot: string,
   appVersion: string,
   verbose: boolean,
+  commitHash?: string,
 ) {
-  const commitHash = yield* resolveGitCommitHash(repoRoot);
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const spawnCommand = yield* resolveSpawnCommand("vp", ["run", "build:desktop"]);
@@ -1898,7 +1897,10 @@ const buildDesktopBundlesUnlocked = Effect.fn("buildDesktopBundlesUnlocked")(fun
           ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             cwd: repoRoot,
             shell: spawnCommand.shell,
-            env: { APP_VERSION: appVersion, T3CODE_BUILD_COMMIT: commitHash },
+            env: {
+              APP_VERSION: appVersion,
+              ...(commitHash ? { T3CODE_BUILD_COMMIT: commitHash } : {}),
+            },
             extendEnv: true,
           }),
           { label: "vp run build:desktop", verbose },
@@ -3796,7 +3798,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
 
   if (!options.skipBuild) {
     yield* Effect.log("[desktop-artifact] Building desktop/server/web artifacts...");
-    yield* buildDesktopBundlesUnlocked(repoRoot, appVersion, options.verbose);
+    yield* buildDesktopBundlesUnlocked(repoRoot, appVersion, options.verbose, commitHash);
   }
 
   const requiredBuildInputs = [
