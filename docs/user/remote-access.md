@@ -27,8 +27,7 @@ local server. Saving your sign-in alone does not start a server or make the
 machine reachable.
 
 On your other device, sign in to the same T3 Connect account and choose the
-environment. On the app.t3.codes home page with no computer added yet, signing
-in adds compatible computers linked to your account. Over SSH, the CLI prints a
+environment in **Settings → Environments**. forkT adds a computer when you select it. Over SSH, the CLI prints a
 browser link and a short code. Open the link on any device, confirm the code
 matches, and approve. The CLI continues on its own, so you do not need to forward
 an OAuth callback port.
@@ -67,7 +66,7 @@ cannot show the code, so update them before you turn approval on.
 
 `t3 up` asks nothing when you name a choice: `--connect`, `--lan`, or their
 `--no-` forms. Choices you do not name keep their settings, and `--yes` takes
-the defaults. Without a terminal:
+the defaults. Hosted access starts off on a fresh forkT installation. Without a terminal:
 
 - T3 Connect sign-in prints a URL and a code. Approve it on any device.
 - A needed restart runs without asking, and stops running agent turns.

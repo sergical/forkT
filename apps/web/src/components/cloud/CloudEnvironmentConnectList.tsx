@@ -96,7 +96,6 @@ export function CloudEnvironmentConnectRows({
   readonly empty?: ReactNode;
   readonly onDiscoveryReady?: () => void;
   readonly selection?: {
-    readonly autoSelectedComputers?: Set<EnvironmentId>;
     readonly selectedIds: ReadonlySet<EnvironmentId>;
     readonly onChange: (environmentId: EnvironmentId, selected: boolean) => void;
   };
@@ -224,39 +223,6 @@ export function CloudEnvironmentConnectRows({
   const visibleEnvironments = [...discovered.values()].filter(({ environment }) =>
     isVisibleEnvironment(environment.environmentId),
   );
-  const selectNewComputers = useEffectEvent(
-    (environments: typeof environmentsState.environments) => {
-      const seen = selection?.autoSelectedComputers;
-      if (!selection || !seen) return;
-      for (const { environment, status, availability } of environments.values()) {
-        if (!isVisibleEnvironment(environment.environmentId)) continue;
-        const id = environment.environmentId;
-        if (availability === "checking") continue;
-        if (
-          discoveredCompatibilityError(status) !== null ||
-          savedById.get(id)?.connection.phase === "unsupported"
-        ) {
-          seen.add(id);
-          if (selection.selectedIds.has(id)) selection.onChange(id, false);
-          continue;
-        }
-        if (seen.has(id)) continue;
-        seen.add(id);
-        selection.onChange(id, true);
-        if (!savedById.has(id)) {
-          void connectEnvironment(environment).then((connected) => {
-            if (!connected) selection.onChange(id, false);
-          });
-        }
-      }
-    },
-  );
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- auto-selects newly discovered machines from the discovery store and starts their relay connections
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- Discovery results arrive from an external store and auto-selection starts relay connections, which mark themselves connecting.
-    selectNewComputers(environmentsState.environments);
-  }, [environmentsState.environments]);
-
   // Discovery clears its list on refresh, so poll only until a machine appears.
   const shouldRefreshWhileEmpty =
     refreshWhileEmpty && visibleEnvironments.length === 0 && !environmentsState.offline;

@@ -607,7 +607,7 @@ function ConfiguredCloudLinkRow({
   const isBusy = isUpdating || isUpdatingPreference;
   const switchDisabled =
     !canManageRelay ||
-    !isSignedIn ||
+    (!isSignedIn && !managedTunnelActive && !publishAgentActivity) ||
     cloudLinkState.data === null ||
     cloudLinkState.isPending ||
     isBusy;
@@ -616,15 +616,14 @@ function ConfiguredCloudLinkRow({
   );
   const tunnelNeedsConfigure = needsRelayConfiguration({
     managedTunnel: !managedTunnelActive,
-    publish: publishAgentActivity,
+    publish: !managedTunnelActive && publishAgentActivity,
   });
   const publishNeedsConfigure = needsRelayConfiguration({
     managedTunnel: managedTunnelActive,
     publish: !publishAgentActivity,
   });
   // `isSignedIn` is undefined until Clerk loads. Signed out, one row shows a
-  // sign-in button instead of its switch; the onboarding dialog that opens after
-  // a fresh sign-in offers both linking and publishing.
+  // sign-in button for explicit setup.
   const signedOut = isSignedIn === false;
   const signInButton = (
     <Button size="sm" variant="outline" onClick={openAuthPrompt}>
@@ -662,20 +661,17 @@ function ConfiguredCloudLinkRow({
   const updateManagedTunnel = async (enabled: boolean) => {
     if (!readEnvironmentScope(environmentId, AuthRelayWriteScope)) return;
     setIsUpdating(true);
-    const ok = await reconcileCloudState({ managedTunnel: enabled, publish: publishAgentActivity });
+    const ok = await reconcileCloudState({
+      managedTunnel: enabled,
+      publish: enabled && publishAgentActivity,
+    });
     if (ok) {
       toastManager.add({
         type: "success",
-        title: enabled
-          ? gt("T3 Connect linked")
-          : publishAgentActivity
-            ? gt("T3 Connect tunnel disabled")
-            : gt("T3 Connect unlinked"),
+        title: enabled ? gt("T3 Connect linked") : gt("T3 Connect unlinked"),
         description: enabled
           ? gt("This environment is available through T3 Connect.")
-          : publishAgentActivity
-            ? gt("The managed tunnel was removed. Agent activity publishing stays on.")
-            : gt("This environment is no longer available through T3 Connect."),
+          : gt("This environment is no longer available through T3 Connect."),
       });
     }
     setIsUpdating(false);
@@ -728,7 +724,7 @@ function ConfiguredCloudLinkRow({
           description={
             connectDenial !== undefined && !managedTunnelActive
               ? connectDenial
-              : signedOut
+              : signedOut && !managedTunnelActive
                 ? gt(
                     "Sign in to make this environment available to your other devices through T3 Connect.",
                   )
@@ -753,7 +749,7 @@ function ConfiguredCloudLinkRow({
           status={operationError ?? cloudLinkState.error ?? reachabilityStatus}
           managed={managedTunnelActive ? undefined : connectDenial}
           control={
-            signedOut ? (
+            signedOut && !managedTunnelActive ? (
               signInButton
             ) : (
               <CloudLinkSwitch
@@ -782,7 +778,7 @@ function ConfiguredCloudLinkRow({
           description={gt("Run `t3 connect link` on the host, then restart T3 Code there.")}
         />
       )}
-      {signedOut && showSwitch ? null : (
+      {signedOut && showSwitch && !publishAgentActivity ? null : (
         <SettingsRow
           title={setting("publish-agent-activity").title}
           description={
@@ -792,7 +788,7 @@ function ConfiguredCloudLinkRow({
           }
           managed={connectDenial}
           control={
-            signedOut ? (
+            signedOut && !publishAgentActivity ? (
               signInButton
             ) : (
               <CloudLinkSwitch

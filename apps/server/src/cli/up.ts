@@ -93,7 +93,7 @@ const readSetup = Effect.fn("cli.up.read_setup")(function* () {
 
 /**
  * The routes `t3 up` starts from. With no route flag it asks about every
- * route, starting a machine with no service from T3 Connect. Any route flag
+ * route, keeping the current selection. Any route flag
  * means it asks nothing and keeps the routes not named as they are.
  */
 export const planRoutes = (
@@ -102,7 +102,7 @@ export const planRoutes = (
 ) => {
   const ask = Option.isNone(flags.connect) && Option.isNone(flags.lan);
   const start = {
-    connect: setup.connect === true || (ask && !setup.installed && setup.connect !== null),
+    connect: setup.connect === true,
     lan: setup.lan,
   };
   return {
@@ -287,9 +287,14 @@ const setUp = Effect.fn("cli.up")(function* (flags: {
       return yield* ManagedLimits.refuseRemoteClients(policy);
     }
   }
+  const shouldUnlink =
+    !routes.connect &&
+    (current.connect ||
+      before.connectRevoked ||
+      (priorPublishOnly && Option.getOrUndefined(flags.connect) === false));
   // Nothing to run in the background, but a route left on still gets turned off.
   if (!before.service.installed && !routes.connect && !routes.lan) {
-    if (current.connect || before.connectRevoked) {
+    if (shouldUnlink) {
       yield* disconnectCloud({ clearAuthorization: false });
     }
     if (current.lan) yield* CliService.writeServiceEnv(baseDir, { T3CODE_LAN: "false" });
@@ -333,10 +338,9 @@ const setUp = Effect.fn("cli.up")(function* (flags: {
     );
   }
   // A running server unlinks live; when that fails, only a restart stops its tunnel.
-  const unlinkFailed =
-    !routes.connect && (current.connect || before.connectRevoked)
-      ? (yield* disconnectCloud({ clearAuthorization: false })).status === "failed"
-      : false;
+  const unlinkFailed = shouldUnlink
+    ? (yield* disconnectCloud({ clearAuthorization: false })).status === "failed"
+    : false;
   const previousLan = (yield* CliService.readServiceEnv(baseDir)).entries.T3CODE_LAN;
   // Also with no service manager: the file records the choice that `t3 status` shows.
   yield* CliService.writeServiceEnv(baseDir, { T3CODE_LAN: String(routes.lan) });
@@ -471,7 +475,7 @@ export const upCommand = Command.make("up", {
   ),
   yes: Flag.Boolean("yes").pipe(
     Flag.withDescription(
-      "Ask nothing. Keep the access settings; a new machine gets T3 Connect. A restart stops running agent turns.",
+      "Ask nothing. Keep the access settings. Hosted access starts off on a new machine. A restart stops running agent turns.",
     ),
     Flag.withDefault(false),
   ),
