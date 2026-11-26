@@ -264,16 +264,7 @@ export const layer = Layer.effect(
             ...(handoff && { senderThreadId: handoff.senderThreadId }),
             ...(selection && { modelSelection: selection }),
           });
-          if (
-            traceFork &&
-            handoff !== undefined &&
-            (sent.run.providerInstanceId === "devReplay" ||
-              (yield* providers.getProviders).some(
-                (provider) =>
-                  provider.instanceId === sent.run.providerInstanceId &&
-                  provider.driver === "codex",
-              ))
-          ) {
+          if (traceFork && handoff !== undefined) {
             yield* Effect.annotateCurrentSpan({
               "sentry.op": "fork.handoff_receipt",
               "fork.thread.ref": hashTelemetryId(coordinator.threadId),

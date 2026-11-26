@@ -294,6 +294,24 @@ it.effect("shares only new visible messages from the conversation that opted in"
     share("worker", { threadId: ThreadId.make("worker-thread") });
     share("hidden-thought", { role: "system" });
     share("injected", { createdBy: "agent", creationSource: "mcp" });
+    const dreamId = ThreadId.make("fork:dream:review");
+    tracing.captureMessage(
+      {
+        id: MessageId.make("review"),
+        threadId: dreamId,
+        runId: RunId.make("dream-run"),
+        text: "Private historical excerpts assembled by the app.",
+        role: "user",
+        createdBy: "user",
+        creationSource: "web",
+        streaming: false,
+        attachments: [],
+        nodeId: null,
+        createdAt: at(2),
+        updatedAt: at(3),
+      },
+      { threadId: dreamId, since: DateTime.formatIso(at(1)) },
+    );
     ForkAgentTracing.startRecordingOrigins();
     const request = yield* Effect.gen(function* () {
       yield* ForkAgentTracing.recordOrigins([

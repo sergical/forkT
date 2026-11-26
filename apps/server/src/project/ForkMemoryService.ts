@@ -236,7 +236,7 @@ const make = Effect.gen(function* () {
   }) {
     yield* Effect.annotateCurrentSpan({
       "fork.memory.scope": input.mainCoordinator ? "main" : "project",
-      "fork.memory.run_ref": hashTelemetryId(input.runId),
+      "fork.run.ref": hashTelemetryId(input.runId),
     });
     const { selection, reused } = yield* sql.withTransaction(
       Effect.gen(function* () {

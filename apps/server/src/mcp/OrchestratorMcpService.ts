@@ -3218,12 +3218,7 @@ const make = Effect.gen(function* () {
             (stored) =>
               stored.event.type === "run.created" && stored.event.threadId === childThreadId,
           );
-          if (
-            traceFork &&
-            taskEvent.event.payload.driver === "codex" &&
-            childThreadId !== null &&
-            childRunEvent?.event.type === "run.created"
-          ) {
+          if (traceFork && childThreadId !== null && childRunEvent?.event.type === "run.created") {
             yield* Effect.annotateCurrentSpan({
               "sentry.op": "fork.delegation",
               "fork.project.ref": hashTelemetryId(parent.thread.projectId),

@@ -1,4 +1,3 @@
-import { hashTelemetryId } from "@t3tools/shared/telemetryId";
 import type {
   OrchestrationV2AppThread,
   OrchestrationV2ConversationMessage,
@@ -140,7 +139,7 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
     "gen_ai.conversation.id": threadId.startsWith("fork:")
       ? hashTelemetryId(JSON.stringify([environmentId, threadId]))
       : threadId,
-    "t3.thread.id": threadId,
+    ...(threadId.startsWith("fork:dream:") ? {} : { "t3.thread.id": threadId }),
     "t3.environment.ref": environmentRef,
   });
   const tracer = yield* Effect.tracer;
@@ -218,14 +217,13 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
       const parentId = spawnParents.get(run.id);
       spawnParents.delete(run.id);
       const shared = {
-        ...(privateMetadata &&
-          driver === "codex" && {
-            "fork.run.ref": hashTelemetryId(run.id),
-            "fork.thread.ref": hashTelemetryId(run.threadId),
-            "fork.provider.driver": driver,
-            ...(parentId && { "fork.parent.run_ref": hashTelemetryId(parentId) }),
-          }),
-        "gen_ai.provider.name": providerName(driver === "codex" ? driver : run.providerInstanceId),
+        ...(privateMetadata && {
+          "fork.run.ref": hashTelemetryId(run.id),
+          "fork.thread.ref": hashTelemetryId(run.threadId),
+          "fork.provider.driver": driver,
+          ...(parentId && { "fork.parent.run_ref": hashTelemetryId(parentId) }),
+        }),
+        "gen_ai.provider.name": providerName(driver ?? run.providerInstanceId),
         "gen_ai.request.model": model,
         ...conversationAttributes(run.threadId),
         "t3.run.id": run.id,
@@ -242,7 +240,7 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
           "t3.delegated_task.id": run.delegatedTaskId ?? undefined,
         },
       );
-      if (driver === "codex" && parentId) {
+      if (privateMetadata && parentId) {
         const parent = runs.get(parentId) ?? finished.get(parentId);
         if (parent)
           span.addLinks([{ span: parent.span, attributes: { "fork.link": "subagent_spawn" } }]);
@@ -303,7 +301,8 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
     if (item.type === "assistant_message") {
       const run = item.runId === null ? undefined : runs.get(item.runId);
       if (
-        run?.attributes["fork.provider.driver"] === "codex" &&
+        privateMetadata &&
+        run &&
         item.status === "completed" &&
         !item.streaming &&
         item.delivery !== "async" &&
@@ -348,19 +347,15 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
     event: Extract<OrchestrationV2DomainEvent, { type: "runtime-request.updated" }>,
   ) => {
     const { payload: request, runId, occurredAt } = event;
-    const run = runId == null ? undefined : (runs.get(runId) ?? finished.get(runId));
-    const driver =
-      event.driver ?? request.nativeRequestRef?.driver ?? run?.attributes["fork.provider.driver"];
-    const metadata =
-      privateMetadata && driver === "codex"
-        ? {
-            "fork.decision.ref": hashTelemetryId(request.id),
-            "fork.thread.ref": hashTelemetryId(event.threadId),
-            ...(runId && { "fork.run.ref": hashTelemetryId(runId) }),
-            "fork.decision.response_mode": request.responseCapability.type,
-            "sentry.op": "fork.decision",
-          }
-        : undefined;
+    const metadata = privateMetadata
+      ? {
+          "fork.decision.ref": hashTelemetryId(request.id),
+          "fork.thread.ref": hashTelemetryId(event.threadId),
+          ...(runId && { "fork.run.ref": hashTelemetryId(runId) }),
+          "fork.decision.response_mode": request.responseCapability.type,
+          "sentry.op": "fork.decision",
+        }
+      : undefined;
     if (request.status === "pending") {
       const key = `pending:${request.id}`;
       if (metadata && !traced.has(key) && !isStale(request.createdAt, occurredAt)) {
@@ -380,7 +375,7 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
       ...metadata,
       "fork.decision.kind": request.kind,
       "fork.decision.status": request.status,
-      "fork.decision.decision": clip(request.decision),
+      "fork.decision.decision": request.decision,
     });
   };
 
@@ -428,6 +423,7 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
       message.streaming ||
       !message.text ||
       message.notification ||
+      message.threadId === `fork:dream:${message.id}` ||
       message.scheduledTaskId ||
       message.senderThreadId ||
       message.linkedSender ||
@@ -495,8 +491,7 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
     span.end(time, run.status === "failed" ? Exit.fail("failed") : Exit.void);
   };
   const needsDreamResult = (run: OrchestrationV2Run) =>
-    (drivers.get(run.providerInstanceId) === "codex" || run.providerInstanceId === "devReplay") &&
-    !traced.has(`dream-result:${run.id}`);
+    privateMetadata && !traced.has(`dream-result:${run.id}`);
   return { onEvent, captureMessage, dreamResult, needsDreamResult };
 });
 

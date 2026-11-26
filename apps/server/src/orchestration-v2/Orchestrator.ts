@@ -16553,13 +16553,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     if (
       command.type === "runtime-request.respond" &&
       (yield* privateForkTraces) &&
-      storedEvents.some(
-        ({ event }) =>
-          event.type === "runtime-request.updated" &&
-          (event.driver === "codex" ||
-            event.payload.nativeRequestRef?.driver === "codex" ||
-            event.providerInstanceId === "devReplay"),
-      )
+      storedEvents.some(({ event }) => event.type === "runtime-request.updated")
     ) {
       yield* Effect.annotateCurrentSpan({
         "sentry.op": "fork.decision.retry",
