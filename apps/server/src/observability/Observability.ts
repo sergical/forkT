@@ -66,7 +66,15 @@ export const layer = Layer.unwrap(
               }).pipe(
                 Effect.provide(OtlpExportFailures.layer("traces")),
                 Effect.map((otlp) =>
-                  config.forkSentry?.sampleTraces ? ForkTraceSampler.make(otlp) : otlp,
+                  config.forkSentry?.sampleTraces
+                    ? ForkTraceSampler.make(otlp, {
+                        ...ForkTraceSampler.defaultForkTracePolicy,
+                        spanAttributes: {
+                          "sentry.release": resource.attributes["sentry.release"],
+                          "t3.build.commit": resource.attributes["t3.build.commit"],
+                        },
+                      })
+                    : otlp,
                 ),
               );
 

@@ -11,20 +11,26 @@ const ms = (value: number) => BigInt(value) * 1_000_000n;
 const ok = Exit.void;
 const failed = Exit.failCause(Cause.fail("boom"));
 
-const harness = (random = () => 1) => {
+const harness = (random = () => 1, spanAttributes?: Readonly<Record<string, unknown>>) => {
   const sent: Array<string> = [];
+  const exportedAttributes = new Map<string, unknown>();
   const delegate = Tracer.make({
     span(options) {
       const span = new Tracer.NativeSpan(options);
       const end = span.end.bind(span);
       span.end = (endTime, exit) => {
         sent.push(options.name);
+        for (const [key, value] of span.attributes) exportedAttributes.set(key, value);
         end(endTime, exit);
       };
       return span;
     },
   });
-  const tracer = ForkTraceSampler.make(delegate, ForkTraceSampler.defaultForkTracePolicy, random);
+  const tracer = ForkTraceSampler.make(
+    delegate,
+    { ...ForkTraceSampler.defaultForkTracePolicy, ...(spanAttributes ? { spanAttributes } : {}) },
+    random,
+  );
   const start = (name: string, at: number, parent?: Tracer.Span) =>
     tracer.span({
       name,
@@ -36,10 +42,22 @@ const harness = (random = () => 1) => {
       root: parent === undefined,
       sampled: true,
     });
-  return { sent, start };
+  return { sent, start, exportedAttributes };
 };
 
 describe("ForkTraceSampler", () => {
+  it("exports release attribution on kept commands", () => {
+    const release = "t3-fork@0.1.13-fork.20261125.5245";
+    const commit = "22a39c4dda88a39e0903da6058961e0157ad173f";
+    const { exportedAttributes, start } = harness(() => 1, {
+      "sentry.release": release,
+      "t3.build.commit": commit,
+    });
+    start("ws.rpc.forkCoordinator.open", 0).end(ms(2), ok);
+    assert.strictEqual(exportedAttributes.get("sentry.release"), release);
+    assert.strictEqual(exportedAttributes.get("t3.build.commit"), commit);
+  });
+
   it("drops a fast, successful trace and sends nothing from it", () => {
     const { sent, start } = harness();
     const root = start("ws.rpc.projects.readFile", 0);

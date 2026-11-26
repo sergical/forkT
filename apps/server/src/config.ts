@@ -136,6 +136,11 @@ export const otlpResource = (
     "t3code.server.managed_by": config.mode === "desktop" ? "desktop" : "standalone",
     "service.instance.id": processServiceInstanceId(config.otelEnvironment.resourceAttributes),
     ...releaseResourceAttributes(telemetryChannel, config.otelEnvironment.resourceAttributes),
+    ...Object.fromEntries(
+      Object.entries(config.otelEnvironment.resourceAttributes).filter(
+        ([key]) => key === "sentry.release" || key === "t3.build.commit",
+      ),
+    ),
     "host.name": config.otelEnvironment.resourceAttributes["host.name"] || hostName,
     ...nodeProcessRuntimeAttributes(),
   },

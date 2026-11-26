@@ -536,7 +536,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
           ...otel,
           resourceAttributes: {
             "deployment.environment.name": "production",
-            "service.version": packageJson.version,
+            "sentry.release": `t3-fork@${packageJson.version}`,
             ...(typeof __T3CODE_BUILD_COMMIT__ !== "undefined" &&
             /^[a-f0-9]{40}$/.test(__T3CODE_BUILD_COMMIT__)
               ? { "t3.build.commit": __T3CODE_BUILD_COMMIT__ }

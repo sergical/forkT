@@ -21,6 +21,7 @@ export interface ForkTracePolicy {
   readonly pollSpanNames: ReadonlySet<string>;
   /** Spans that make their trace worth keeping and are always sent. */
   readonly alwaysPrefixes: ReadonlyArray<string>;
+  readonly spanAttributes?: Readonly<Record<string, unknown>>;
 }
 
 export const defaultForkTracePolicy: ForkTracePolicy = {
@@ -212,6 +213,9 @@ export const make = (
   return Tracer.make({
     span(options) {
       const inner = delegate.span(options);
+      for (const [key, value] of Object.entries(policy.spanAttributes ?? {})) {
+        inner.attribute(key, value);
+      }
       const parentId = Option.getOrUndefined(options.parent)?.spanId;
       const parentSpan = parentId === undefined ? undefined : open.get(parentId);
       const span = new SampledSpan(inner, parentSpan, options.startTime, parentSpan?.trace, policy);
