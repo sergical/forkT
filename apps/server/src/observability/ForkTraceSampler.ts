@@ -62,7 +62,7 @@ class SampledSpan implements Tracer.Span {
   readonly startTime: bigint;
   readonly trace: TraceState;
   readonly suppressed: boolean;
-  readonly always: boolean;
+  always: boolean;
   keepForDescendant = false;
   endTime: bigint | undefined;
   exit: Exit.Exit<unknown, unknown> | undefined;
@@ -128,6 +128,10 @@ class SampledSpan implements Tracer.Span {
 
   attribute(key: string, value: unknown) {
     this.inner.attribute(key, value);
+    if (key === "sentry.op" && typeof value === "string" && value.startsWith("fork.")) {
+      this.always = true;
+      this.trace.always = true;
+    }
   }
   event(name: string, startTime: bigint, attributes?: Record<string, unknown>) {
     this.inner.event(name, startTime, attributes);

@@ -62,7 +62,12 @@ export const handoffProjectDeliverable = Effect.fn("fork.project_handoff")(funct
           text: `From ${origin} for this project. Complete and verify the request here. Report the outcome back to the source thread.\n\n${input.source}`,
         },
       },
-      { senderThreadId: thread.threadId, role: input.role, highJudgment: input.highJudgment },
+      {
+        senderThreadId: thread.threadId,
+        senderRunId: caller?.activeRunId ?? undefined,
+        role: input.role,
+        highJudgment: input.highJudgment,
+      },
     )
     .pipe(
       Effect.mapError(

@@ -1,10 +1,11 @@
+import { hashTelemetryId } from "@t3tools/shared/telemetryId";
 import type {
   OrchestrationV2AppThread,
   OrchestrationV2ConversationMessage,
   OrchestrationV2DomainEvent,
   OrchestrationV2ProviderTurn,
+  OrchestrationV2PlanArtifact,
   OrchestrationV2Run,
-  OrchestrationV2RuntimeRequest,
   OrchestrationV2StoredEvent,
   OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
@@ -19,6 +20,7 @@ import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as Tracer from "effect/Tracer";
 
+import { privateForkTraces } from "./forkAgentMetadata.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
@@ -142,7 +144,11 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
     "t3.environment.ref": environmentRef,
   });
   const tracer = yield* Effect.tracer;
+  const privateMetadata = yield* privateForkTraces;
+  const drivers = new Map<string, string>();
   const runs = new Map<string, OpenRun>();
+  // The spawn transfer is committed before the child reaches its provider.
+  const spawnParents = new Map<string, string>();
   // Finished runs, so tools and subagents that end after their run still join it.
   const finished = new Map<string, OpenRun>();
   // Traced ids by event time, kept for as long as an update to them still counts as fresh.
@@ -208,8 +214,18 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
     if (open === undefined && run.startedAt !== null && !stale && !traced.has(`run:${run.id}`)) {
       markTraced(`run:${run.id}`);
       const model = run.modelSelection.model;
+      const driver = drivers.get(run.providerInstanceId);
+      const parentId = spawnParents.get(run.id);
+      spawnParents.delete(run.id);
       const shared = {
-        "gen_ai.provider.name": providerName(run.providerInstanceId),
+        ...(privateMetadata &&
+          driver === "codex" && {
+            "fork.run.ref": hashTelemetryId(run.id),
+            "fork.thread.ref": hashTelemetryId(run.threadId),
+            "fork.provider.driver": driver,
+            ...(parentId && { "fork.parent.run_ref": hashTelemetryId(parentId) }),
+          }),
+        "gen_ai.provider.name": providerName(driver === "codex" ? driver : run.providerInstanceId),
         "gen_ai.request.model": model,
         ...conversationAttributes(run.threadId),
         "t3.run.id": run.id,
@@ -226,6 +242,11 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
           "t3.delegated_task.id": run.delegatedTaskId ?? undefined,
         },
       );
+      if (driver === "codex" && parentId) {
+        const parent = runs.get(parentId) ?? finished.get(parentId);
+        if (parent)
+          span.addLinks([{ span: parent.span, attributes: { "fork.link": "subagent_spawn" } }]);
+      }
       origins.delete(run.userMessageId);
       runs.set(run.id, { span, model, attributes: shared });
       if (runs.size > MAX_OPEN_RUNS) {
@@ -279,6 +300,20 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
       return;
     }
     if (traced.has(`item:${item.id}`) || isStale(item.completedAt, occurredAt)) return;
+    if (item.type === "assistant_message") {
+      const run = item.runId === null ? undefined : runs.get(item.runId);
+      if (
+        run?.attributes["fork.provider.driver"] === "codex" &&
+        item.status === "completed" &&
+        !item.streaming &&
+        item.delivery !== "async" &&
+        (item.phase === undefined || item.phase === "final_answer") &&
+        item.text.trim()
+      ) {
+        run.span.attribute("fork.run.final_answer_observed", true);
+      }
+      return;
+    }
     const failed = item.status === "failed";
     if (item.type === "compaction") {
       markTraced(`item:${item.id}`);
@@ -308,16 +343,41 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
     });
   };
 
-  // Approvals and questions: who decided, what, and how long the work waited on it.
+  // Resolution commits the answer before the adapter or a subsequent turn receives it.
   const onRuntimeRequest = (
-    request: OrchestrationV2RuntimeRequest,
-    runId: string | null | undefined,
-    occurredAt: DateTime.Utc,
+    event: Extract<OrchestrationV2DomainEvent, { type: "runtime-request.updated" }>,
   ) => {
-    if (request.status === "pending" || request.resolvedAt === null) return;
+    const { payload: request, runId, occurredAt } = event;
+    const run = runId == null ? undefined : (runs.get(runId) ?? finished.get(runId));
+    const driver =
+      event.driver ?? request.nativeRequestRef?.driver ?? run?.attributes["fork.provider.driver"];
+    const metadata =
+      privateMetadata && driver === "codex"
+        ? {
+            "fork.decision.ref": hashTelemetryId(request.id),
+            "fork.thread.ref": hashTelemetryId(event.threadId),
+            ...(runId && { "fork.run.ref": hashTelemetryId(runId) }),
+            "fork.decision.response_mode": request.responseCapability.type,
+            "sentry.op": "fork.decision",
+          }
+        : undefined;
+    if (request.status === "pending") {
+      const key = `pending:${request.id}`;
+      if (metadata && !traced.has(key) && !isStale(request.createdAt, occurredAt)) {
+        markTraced(key);
+        complete("fork.decision.requested", runId, request.createdAt, request.createdAt, false, {
+          ...metadata,
+          "sentry.op": "fork.decision.requested",
+          "fork.decision.kind": request.kind,
+        });
+      }
+      return;
+    }
+    if (request.resolvedAt === null) return;
     if (traced.has(`request:${request.id}`) || isStale(request.resolvedAt, occurredAt)) return;
     markTraced(`request:${request.id}`);
     complete("fork.decision", runId, request.createdAt, request.resolvedAt, false, {
+      ...metadata,
       "fork.decision.kind": request.kind,
       "fork.decision.status": request.status,
       "fork.decision.decision": clip(request.decision),
@@ -327,6 +387,21 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
   const onEvent = ({ event }: OrchestrationV2StoredEvent) => {
     now = Math.max(now, DateTime.toEpochMillis(event.occurredAt));
     switch (event.type) {
+      case "context-transfer.created": {
+        const transfer = event.payload;
+        if (
+          privateMetadata &&
+          transfer.type === "subagent_spawn" &&
+          transfer.targetRunId &&
+          transfer.sourcePoint.runId
+        )
+          remember(spawnParents, transfer.targetRunId, transfer.sourcePoint.runId);
+        return;
+      }
+      case "provider-thread.updated":
+        if (privateMetadata)
+          remember(drivers, event.payload.providerInstanceId, event.payload.driver);
+        return;
       case "message.updated":
         return;
       case "provider-turn.updated":
@@ -334,7 +409,7 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
       case "turn-item.updated":
         return onTurnItem(event.payload, event.occurredAt);
       case "runtime-request.updated":
-        return onRuntimeRequest(event.payload, event.runId, event.occurredAt);
+        return onRuntimeRequest(event);
       default:
         if (event.type.startsWith("run.") && "modelSelection" in event.payload) {
           return onRun(event.payload as OrchestrationV2Run, event.occurredAt);
@@ -389,7 +464,40 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
       user ? origins.get(message.id) : undefined,
     );
   };
-  return { onEvent, captureMessage };
+  const dreamResult = (
+    run: OrchestrationV2Run,
+    items: readonly OrchestrationV2TurnItem[],
+    plans: readonly OrchestrationV2PlanArtifact[],
+  ) => {
+    const key = `dream-result:${run.id}`;
+    if (traced.has(key) || run.completedAt === null) return;
+    markTraced(key);
+    const time = nanos(run.completedAt);
+    const span = start(
+      "fork.dream.result",
+      (runs.get(run.id) ?? finished.get(run.id))?.span,
+      time,
+      {
+        "sentry.op": "fork.dream.result",
+        "fork.dream.thread_ref": hashTelemetryId(run.threadId),
+        "fork.dream.run_ref": hashTelemetryId(run.id),
+        "fork.dream.status": run.status,
+        "fork.dream.assistant_output": items.some(
+          (item) =>
+            item.type === "assistant_message" && !item.streaming && item.text.trim().length > 0,
+        ),
+        "fork.dream.proposed_plan": plans.some(
+          (plan) =>
+            plan.runId === run.id && plan.kind === "proposed_plan" && plan.status !== "draft",
+        ),
+      },
+    );
+    span.end(time, run.status === "failed" ? Exit.fail("failed") : Exit.void);
+  };
+  const needsDreamResult = (run: OrchestrationV2Run) =>
+    (drivers.get(run.providerInstanceId) === "codex" || run.providerInstanceId === "devReplay") &&
+    !traced.has(`dream-result:${run.id}`);
+  return { onEvent, captureMessage, dreamResult, needsDreamResult };
 });
 
 export const layer = Layer.effectDiscard(
@@ -411,6 +519,27 @@ export const layer = Layer.effectDiscard(
         try {
           tracing.onEvent(stored);
           const event = stored.event;
+          if (
+            config.forkSentry?.sampleTraces &&
+            (event.type === "run.updated" || event.type === "run.created") &&
+            event.threadId === `fork:dream:${event.payload.userMessageId}` &&
+            tracing.needsDreamResult(event.payload) &&
+            TERMINAL_RUN.has(event.payload.status) &&
+            event.payload.completedAt !== null &&
+            !isStale(event.payload.completedAt, event.occurredAt)
+          ) {
+            const run = event.payload;
+            return projection
+              .getThreadRecords(run.threadId, ["turnItems", "plans"], {
+                turnItemRunId: run.id,
+                turnItemTypes: ["assistant_message"],
+                turnItemStatuses: ["completed"],
+              })
+              .pipe(
+                Effect.map(({ turnItems, plans }) => tracing.dreamResult(run, turnItems, plans)),
+                Effect.ignore,
+              );
+          }
           if (
             config.forkSentry?.sampleTraces &&
             event.type === "message.updated" &&

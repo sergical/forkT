@@ -1,3 +1,5 @@
+import { hashTelemetryId } from "@t3tools/shared/telemetryId";
+import { privateForkTraces } from "../observability/forkAgentMetadata.ts";
 import type {
   OrchestrationV2ThreadLinkMetadata,
   GuestShareId,
@@ -16548,6 +16550,24 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           }),
       ),
     );
+    if (
+      command.type === "runtime-request.respond" &&
+      (yield* privateForkTraces) &&
+      storedEvents.some(
+        ({ event }) =>
+          event.type === "runtime-request.updated" &&
+          (event.driver === "codex" ||
+            event.payload.nativeRequestRef?.driver === "codex" ||
+            event.providerInstanceId === "devReplay"),
+      )
+    ) {
+      yield* Effect.annotateCurrentSpan({
+        "sentry.op": "fork.decision.retry",
+        "fork.decision.ref": hashTelemetryId(command.requestId),
+        "fork.thread.ref": hashTelemetryId(command.threadId),
+        "fork.dispatch.replayed": true,
+      });
+    }
     if (command.type === "queue.resume" || command.type === "queued-run.start") {
       yield* mapDispatchError(command)(
         startNextQueuedRun(command.threadId, {
