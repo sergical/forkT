@@ -58,4 +58,4 @@ kill -USR2 "$pid"
 - Writing pauses the server (up to a minute+ on large heaps) and needs roughly as much free RAM as the heap—send once, and avoid on a swapping host.
 - Snapshots contain tokens, secrets, and thread content. Never share them publicly, and delete them manually when finished.
 
-For an opted-in forkT diagnostic launch, set `T3_FORK_PROFILE_SERVER=1` in a standalone Node server process environment. With fork telemetry enabled and the profiler binding available, the server sends a ten-second startup profile to Sentry. The packaged Electron backend needs an Electron-specific profiler binding. Renderer and Electron main-process profiling remain off.
+For an opted-in forkT diagnostic launch, set `T3_FORK_PROFILE_SERVER=1` in the app or standalone Node server process environment. With fork telemetry enabled and the profiler binding available, the server sends a ten-second startup profile to Sentry. The Mac build includes an Electron-specific profiler binding for its backend. Renderer and Electron main-process profiling remain off.

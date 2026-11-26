@@ -1524,6 +1524,33 @@ export function resolveKeyringNativeArtifacts(
   }));
 }
 
+const rebuildMacServerProfiler = Effect.fn("rebuildMacServerProfiler")(function* (
+  stageAppDir: string,
+  electronVersion: string,
+  arch: typeof BuildArch.Type,
+  verbose: boolean,
+) {
+  const path = yield* Path.Path;
+  const stageRequire = NodeModule.createRequire(path.join(stageAppDir, "package.json"));
+  const profilerRequire = NodeModule.createRequire(stageRequire.resolve("@sentry/profiling-node"));
+  const bindingsPackage = profilerRequire.resolve("@sentry/node-cpu-profiler/package.json");
+  const buildScript = NodeModule.createRequire(import.meta.url).resolve("node-gyp/bin/node-gyp.js");
+  yield* runCommand(
+    ChildProcess.make(
+      process.execPath,
+      [
+        buildScript,
+        "rebuild",
+        `--target=${electronVersion}`,
+        `--arch=${arch}`,
+        "--dist-url=https://electronjs.org/headers",
+      ],
+      { cwd: path.dirname(bindingsPackage) },
+    ),
+    { label: "Build Sentry profiler for Electron", verbose },
+  );
+});
+
 /** electron-builder omits pnpm-nested platform packages; stage keyring's binary beside its loader, which checks there first. */
 const stageKeyringNativeBinaries = Effect.fn("stageKeyringNativeBinaries")(function* (
   stageAppDir: string,
@@ -2886,6 +2913,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       category: "public.app-category.developer-tools",
       extendInfo: {
         ...(commitHash === undefined ? {} : { T3ForkCommitHash: commitHash }),
+        CFBundleDisplayName: "forkT",
         // macOS 26 offers Messages/Mail codes in every text field unless opted out.
         NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
         NSLocalNetworkUsageDescription:
@@ -4048,6 +4076,9 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   );
   yield* stageClerkPasskeyNativeBinaries(stageAppDir, options.platform, options.arch);
   yield* stageKeyringNativeBinaries(stageAppDir, options.platform, options.arch);
+  if (options.platform === "mac" && hostPlatform === "darwin") {
+    yield* rebuildMacServerProfiler(stageAppDir, electronVersion, options.arch, options.verbose);
+  }
 
   if (options.platform === "win" && windowsServerAsarPath) {
     yield* stageWindowsServerSidecar({

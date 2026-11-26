@@ -2676,6 +2676,9 @@ importers:
       jszip:
         specifier: 3.10.1
         version: 3.10.1
+      node-gyp:
+        specifier: 12.4.0
+        version: 12.4.0
       postject:
         specifier: 1.0.0-alpha.6
         version: 1.0.0-alpha.6
