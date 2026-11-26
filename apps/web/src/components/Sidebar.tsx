@@ -2870,6 +2870,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   : null,
               isPinned,
               isSettled,
+              ...(serverConfigs.get(thread.environmentId)?.environment.capabilities
+                .conversationSentryText
+                ? { captureSentryText: thread.sentryTextConsent?.threadId === thread.id }
+                : {}),
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
               isSnoozed,
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
@@ -3008,6 +3012,21 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           case "rename":
             startThreadRename(threadRef, thread.title);
             return;
+          case "capture-sentry-text": {
+            const result = await updateThreadMetadata({
+              environmentId: thread.environmentId,
+              input: {
+                threadId: thread.id,
+                captureSentryText: thread.sentryTextConsent?.threadId !== thread.id,
+              },
+            });
+            if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+              toastManager.add(
+                stackedThreadToast({ type: "error", title: gt("Could not update Sentry sharing") }),
+              );
+            }
+            return;
+          }
           case "share-guest":
             openGuestShareDialog(threadRef);
             return;

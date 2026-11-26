@@ -1,5 +1,11 @@
 import { assert, it } from "@effect/vitest";
-import type { OrchestrationV2StoredEvent } from "@t3tools/contracts";
+import {
+  MessageId,
+  RunId,
+  ThreadId,
+  type OrchestrationV2ConversationMessage,
+  type OrchestrationV2StoredEvent,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -135,7 +141,7 @@ it.effect("turns one run's events into gen_ai spans under the request that sent 
     assert.strictEqual(chat.attributes.get("gen_ai.context.utilization"), 0.25);
 
     const tool = byName.get("execute_tool command")!;
-    assert.strictEqual(tool.attributes.get("gen_ai.tool.input"), "echo hi");
+    assert.isFalse(tool.attributes.has("gen_ai.tool.input"));
     assert.strictEqual(
       byName.get("fork.decision")!.attributes.get("fork.decision.decision"),
       "accept",
@@ -229,4 +235,68 @@ it.effect(
       tracing.onEvent(item(0));
       assert.strictEqual(count, 25_000);
     }),
+);
+
+it.effect("shares only new visible messages from the conversation that opted in", () =>
+  Effect.gen(function* () {
+    const spans: Tracer.NativeSpan[] = [];
+    const tracer = Tracer.make({
+      span(options) {
+        const span = new Tracer.NativeSpan(options);
+        spans.push(span);
+        return span;
+      },
+    });
+    const tracing = yield* ForkAgentTracing.make.pipe(Effect.withTracer(tracer));
+    const threadId = ThreadId.make("chosen");
+    const share = (
+      id: string,
+      fields: Partial<OrchestrationV2ConversationMessage> = {},
+      enabled = true,
+    ) => {
+      tracing.captureMessage(
+        {
+          id: MessageId.make(id),
+          text: id,
+          role: "user",
+          threadId,
+          runId: RunId.make("run"),
+          nodeId: null,
+          createdBy: "user",
+          creationSource: "web",
+          streaming: false,
+          createdAt: at(2),
+          updatedAt: at(3),
+          attachments: [
+            {
+              id: "attachment",
+              type: "file",
+              name: "private-attachment",
+              mimeType: "text/plain",
+              sizeBytes: 16,
+            },
+          ],
+          ...fields,
+        },
+        enabled ? { threadId, since: DateTime.formatIso(at(1)) } : null,
+      );
+    };
+    share("before", { createdAt: at(0) });
+    share("disabled", {}, false);
+    share("worker", { threadId: ThreadId.make("worker-thread") });
+    share("hidden-thought", { role: "system" });
+    share("injected", { createdBy: "agent", creationSource: "mcp" });
+    share("visible-steer");
+    share("visible-answer", { role: "assistant", createdBy: "agent", creationSource: "provider" });
+    assert.deepEqual(
+      spans.map((span) => [
+        span.attributes.get("gen_ai.input.messages"),
+        span.attributes.get("gen_ai.output.messages"),
+      ]),
+      [
+        [JSON.stringify([{ role: "user", content: "visible-steer" }]), undefined],
+        [undefined, JSON.stringify([{ role: "assistant", content: "visible-answer" }])],
+      ],
+    );
+  }),
 );
