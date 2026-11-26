@@ -57,3 +57,5 @@ kill -USR2 "$pid"
 
 - Writing pauses the server (up to a minute+ on large heaps) and needs roughly as much free RAM as the heap—send once, and avoid on a swapping host.
 - Snapshots contain tokens, secrets, and thread content. Never share them publicly, and delete them manually when finished.
+
+For an opted-in forkT diagnostic launch, set `T3_FORK_PROFILE_SERVER=1` in the app or server process environment. With fork telemetry enabled, the Node server sends a ten-second startup profile to Sentry. Renderer and Electron main-process profiling remain off.

@@ -24,7 +24,7 @@ export const ProjectDeliverableHandoff = Schema.Struct({
 });
 
 /** Queue a deliverable in its project coordinator and return a receipt for the main coordinator. */
-export const handoffProjectDeliverable = Effect.fn("Mcp.handoffProjectDeliverable")(function* (
+export const handoffProjectDeliverable = Effect.fn("fork.project_handoff")(function* (
   input: typeof ProjectDeliverableHandoff.Type,
 ) {
   const scope = yield* McpInvocationContext.McpInvocationContext;
@@ -63,6 +63,15 @@ export const handoffProjectDeliverable = Effect.fn("Mcp.handoffProjectDeliverabl
         (error) => new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
       ),
     );
+  yield* Effect.annotateCurrentSpan({
+    "sentry.op": "fork.project_handoff",
+    "t3.handoff.source_thread_id": thread.threadId,
+    "t3.handoff.destination_thread_id": destination.threadId,
+    "t3.handoff.outcome": "accepted",
+    ...(caller?.activeRunId === undefined
+      ? {}
+      : { "t3.handoff.source_run_id": caller.activeRunId }),
+  });
   const link = McpInvocationContext.threadLinkFor(
     scope,
     destination.threadId,

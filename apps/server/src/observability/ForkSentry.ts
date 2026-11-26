@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/node";
 import { FORK_SENTRY_DSN } from "@t3tools/shared/forkSentry";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as ErrorReporter from "effect/ErrorReporter";
@@ -20,15 +21,40 @@ export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
     if (config.forkSentry === undefined) return;
+    const profileEnabled = yield* Config.String("T3_FORK_PROFILE_SERVER").pipe(
+      Config.withDefault("0"),
+      Effect.orElseSucceed(() => "0"),
+    );
+    const profiling =
+      profileEnabled === "1"
+        ? yield* Effect.promise(() => import("@sentry/profiling-node").catch(() => undefined))
+        : undefined;
+    if (profileEnabled === "1" && profiling === undefined) {
+      yield* Effect.logWarning("Server profiling is unavailable on this runtime.");
+    }
     Sentry.init({
       dsn: FORK_SENTRY_DSN.server,
       release: `t3-fork@${packageJson.version}`,
       environment:
         config.otelEnvironment.resourceAttributes["deployment.environment.name"] ?? "production",
       enableOpenTelemetrySetup: false,
+      ...(profiling === undefined
+        ? {}
+        : {
+            integrations: [profiling.nodeProfilingIntegration()],
+            profileLifecycle: "manual",
+            profileSessionSampleRate: 1,
+          }),
     });
     yield* Effect.addFinalizer(() => Effect.promise(() => Sentry.flush(2_000)));
     yield* bridgeMetrics.pipe(Effect.forkScoped);
+    if (profiling !== undefined) {
+      yield* Effect.acquireUseRelease(
+        Effect.sync(() => Sentry.profiler.startProfiler()),
+        () => Effect.sleep("10 seconds"),
+        () => Effect.sync(() => Sentry.profiler.stopProfiler()),
+      ).pipe(Effect.forkScoped);
+    }
   }),
 );
 
