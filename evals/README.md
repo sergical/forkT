@@ -12,6 +12,7 @@ Write or run an eval when a change affects what a model sees or does: agent inst
 | [voice-cleanup](voice-cleanup/)           | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.             |
 | [test-signal](test-signal/)               | Whether a cheap model running the test-signal check flags low-signal tests.                          |
 | [workflow-authoring](workflow-authoring/) | Whether a model writes a working workflow file from the `t3-workflows` skill alone.                  |
+| [recommended-pick](recommended-pick/)     | Whether worker agents mark the option they would pick when they ask the user, and cite a memory.     |
 
 ## Run an eval
 
