@@ -286,7 +286,15 @@ it.effect("shares only new visible messages from the conversation that opted in"
     share("worker", { threadId: ThreadId.make("worker-thread") });
     share("hidden-thought", { role: "system" });
     share("injected", { createdBy: "agent", creationSource: "mcp" });
+    ForkAgentTracing.startRecordingOrigins();
+    const request = yield* Effect.gen(function* () {
+      yield* ForkAgentTracing.recordOrigins([
+        { type: "message.updated", payload: { id: "visible-steer", role: "user" } } as never,
+      ]);
+      return yield* Effect.currentSpan;
+    }).pipe(Effect.withSpan("ws.rpc.orchestration.dispatchCommand", { root: true }));
     share("visible-steer");
+    assert.strictEqual(spans[0]?.traceId, request.traceId);
     share("visible-answer", { role: "assistant", createdBy: "agent", creationSource: "provider" });
     assert.deepEqual(
       spans.map((span) => [

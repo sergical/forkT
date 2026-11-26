@@ -174,9 +174,13 @@ export const make = Effect.gen(function* () {
     completedAt: DateTime.Utc,
     failed: boolean,
     attributes: Record<string, unknown>,
+    origin?: Tracer.AnySpan,
   ) => {
     const run = runId == null ? undefined : (runs.get(runId) ?? finished.get(runId));
-    const span = start(name, run?.span, nanos(startedAt), { ...run?.attributes, ...attributes });
+    const span = start(name, run?.span ?? origin, nanos(startedAt), {
+      ...run?.attributes,
+      ...attributes,
+    });
     span.end(nanos(completedAt), failed ? Exit.fail(name) : Exit.void);
   };
 
@@ -372,6 +376,7 @@ export const make = Effect.gen(function* () {
           { role: message.role, content: message.text },
         ]),
       },
+      user ? origins.get(message.id) : undefined,
     );
   };
   return { onEvent, captureMessage };
