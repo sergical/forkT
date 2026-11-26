@@ -1,3 +1,4 @@
+import { hashTelemetryId } from "@t3tools/shared/telemetryId";
 import { pipe } from "effect/Function";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { brokenRuntimeError } from "../../provider/providerCompatibility.ts";
@@ -115,6 +116,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { resolveAttachmentPath, resolveAttachmentPathById } from "../../attachmentStore.ts";
 import * as PortScanner from "../../preview/PortScanner.ts";
 import { getCodexServiceTierOptionValue } from "../../codexModelOptions.ts";
+import { traceMessage, traceThread } from "../../observability/forkAgentMetadata.ts";
 import { ServerConfig } from "../../config.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { buildCodexAdditionalContext } from "../../provider/CodexDeveloperInstructions.ts";
@@ -8085,6 +8087,33 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   "Codex returned a turn belonging to an earlier run. Stop the existing turn before retrying this message.",
               });
             }
+            if (serverConfig.forkSentry?.sampleTraces) {
+              yield* Effect.annotateCurrentSpan({
+                "sentry.op": "fork.delivery",
+                ...traceThread(turnInput.appThread),
+                ...traceMessage(turnInput.message),
+                "fork.run.ref": hashTelemetryId(turnInput.runId),
+                "fork.attempt.ref": hashTelemetryId(turnInput.attemptId),
+                "fork.delivery.mode": "turn_start",
+                "fork.delivery.status": "provider_accepted",
+                "fork.delivery.model": turnStartParams.model,
+                "fork.delivery.effort": turnStartParams.effort ?? "provider_default",
+                "fork.delivery.effort_source":
+                  getModelSelectionStringOptionValue(
+                    turnInput.modelSelection,
+                    "reasoningEffort",
+                  ) !== undefined
+                    ? "selection"
+                    : turnStartParams.effort != null
+                      ? "adapter_default"
+                      : "provider_default",
+                ...(turnInput.message.senderThreadId && {
+                  "fork.message.sender_thread_ref": hashTelemetryId(
+                    turnInput.message.senderThreadId,
+                  ),
+                }),
+              });
+            }
             // A turn/started notification may have registered and completed this turn already.
             if ((yield* Ref.get(pendingRootTurns)).get(threadId) !== turnInput) return;
             yield* registerRootTurn({
@@ -8702,6 +8731,24 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 ],
                 threadId,
               });
+              if (serverConfig.forkSentry?.sampleTraces) {
+                yield* Effect.annotateCurrentSpan({
+                  "sentry.op": "fork.delivery",
+                  ...traceThread(activeTurn.input.appThread),
+                  ...traceMessage(turnInput.message),
+                  "fork.run.ref": hashTelemetryId(turnInput.runId),
+                  "fork.attempt.ref": hashTelemetryId(activeTurn.input.attemptId),
+                  "fork.delivery.mode": "steer",
+                  "fork.delivery.status": "provider_accepted",
+                  "fork.delivery.active_request_model": activeTurn.input.modelSelection.model,
+                  "fork.delivery.effort_source": "active_turn",
+                  ...(turnInput.message.senderThreadId && {
+                    "fork.message.sender_thread_ref": hashTelemetryId(
+                      turnInput.message.senderThreadId,
+                    ),
+                  }),
+                });
+              }
               if (unsentNotes.length > 0) {
                 yield* Ref.update(additionalContextByThread, (current) => {
                   const next = new Map(current);
@@ -9275,7 +9322,15 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     ),
                   });
                 }
-                yield* Deferred.succeed(pending.answers, requestInput.answers);
+                const accepted = yield* Deferred.succeed(pending.answers, requestInput.answers);
+                if (serverConfig.forkSentry?.sampleTraces) {
+                  yield* Effect.annotateCurrentSpan({
+                    "sentry.op": "fork.delivery",
+                    "fork.decision.ref": hashTelemetryId(requestInput.requestId),
+                    "fork.delivery.mode": "live_answer",
+                    "fork.delivery.status": accepted ? "adapter_resumed" : "already_resumed",
+                  });
+                }
                 return;
               }
               if (requestInput.decision === undefined) {

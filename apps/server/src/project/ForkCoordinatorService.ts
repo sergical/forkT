@@ -1,3 +1,5 @@
+import { hashTelemetryId } from "@t3tools/shared/telemetryId";
+import { privateForkTraces } from "../observability/forkAgentMetadata.ts";
 import {
   CommandId,
   ForkCoordinatorError,
@@ -6,6 +8,7 @@ import {
   type OrchestratorMcpTaskRole,
   type ModelSelection,
   type ThreadId,
+  type RunId,
   type ForkCoordinator,
   type ForkCoordinatorOpenInput,
 } from "@t3tools/contracts";
@@ -29,6 +32,7 @@ import { recommendForkRoute, refreshForkRoutingProviders } from "./forkCoordinat
 
 type Handoff = {
   readonly senderThreadId: ThreadId;
+  readonly senderRunId?: RunId | undefined;
   readonly role?: OrchestratorMcpTaskRole | undefined;
   readonly highJudgment?: boolean | undefined;
 };
@@ -47,6 +51,7 @@ const isCoordinatorError = Schema.is(ForkCoordinatorError);
 export const layer = Layer.effect(
   ForkCoordinatorService,
   Effect.gen(function* () {
+    const traceFork = yield* privateForkTraces;
     const store = yield* ForkCoordinatorStore.ForkCoordinatorStore;
     const projects = yield* ProjectService.ProjectService;
     const settingsService = yield* ServerSettings.ServerSettingsService;
@@ -246,7 +251,7 @@ export const layer = Layer.effect(
               selection = route.selection;
             }
           }
-          yield* threads.sendToThread({
+          const sent = yield* threads.sendToThread({
             projectId: coordinator.projectId,
             commandId: input.message.commandId,
             threadId: coordinator.threadId,
@@ -259,6 +264,27 @@ export const layer = Layer.effect(
             ...(handoff && { senderThreadId: handoff.senderThreadId }),
             ...(selection && { modelSelection: selection }),
           });
+          if (traceFork && handoff !== undefined) {
+            yield* Effect.annotateCurrentSpan({
+              "sentry.op": "fork.handoff_receipt",
+              "fork.thread.ref": hashTelemetryId(coordinator.threadId),
+              "fork.run.ref": hashTelemetryId(sent.run.id),
+              "fork.message.ref": hashTelemetryId(sent.message.id),
+              "fork.project.ref": hashTelemetryId(coordinator.projectId),
+              "fork.parent.thread_ref": hashTelemetryId(handoff.senderThreadId),
+              ...(handoff.senderRunId && {
+                "fork.parent.run_ref": hashTelemetryId(handoff.senderRunId),
+              }),
+              "fork.dispatch.delivery": sent.delivery,
+              "fork.dispatch.replayed": sent.dispatch.replayed === true,
+              ...(sent.dispatch.replayed
+                ? {}
+                : {
+                    "fork.selection.targeted": input.modelSelection !== undefined,
+                    "fork.selection.routed": routing !== undefined,
+                  }),
+            });
+          }
         }
         return routing ? { ...coordinator, routing } : coordinator;
       },

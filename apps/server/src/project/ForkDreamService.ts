@@ -8,6 +8,7 @@ import {
   type ForkDream,
   type ForkDreamInput,
 } from "@t3tools/contracts";
+import { hashTelemetryId } from "@t3tools/shared/telemetryId";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -75,7 +76,7 @@ export const layer = Layer.effect(
     const memories = yield* ForkMemoryService.ForkMemoryService;
     const launches = yield* ThreadLaunchService.ThreadLaunchService;
     const threads = yield* ThreadManagement.ThreadManagementService;
-    const start = Effect.fn("ForkDreamService.start")(
+    const start = Effect.fn("fork.dream.start")(
       function* (input: ForkDreamInput) {
         yield* coordinators.open({ projectId: input.projectId, global: false });
         const coordinator = yield* store.get({ projectId: input.projectId, global: false });
@@ -105,10 +106,11 @@ export const layer = Layer.effect(
                 };
                 const encoded = yield* encodeRecord(record);
                 yield* sql`UPDATE fork_dreams SET payload_json = ${encoded} WHERE project_id = ${input.projectId}`;
-                return { record, reused: true };
+                return { record, snapshot: "resume_launch" } as const;
               }
-              if (active.length > 0 || (previous.commandId === input.commandId && live.length > 0))
-                return { record: previous, reused: true };
+              if (active.length > 0) return { record: previous, snapshot: "active" } as const;
+              if (previous.commandId === input.commandId && live.length > 0)
+                return { record: previous, snapshot: "same_request" } as const;
             }
             const sources = yield* sql`
         SELECT m.thread_id AS threadId, m.message_id AS messageId, m.role, r.status AS runStatus,
@@ -122,10 +124,7 @@ export const layer = Layer.effect(
           AND length(json_extract(m.payload_json, '$.text')) > 0
         ORDER BY m.created_at DESC, m.message_id LIMIT 40
       `.pipe(Effect.flatMap(decodeEvidence));
-            if (sources.length === 0)
-              return yield* new ForkCoordinatorError({
-                message: "There is no completed work to review in this project yet.",
-              });
+            if (sources.length === 0) return null;
             const index = (yield* memories.search({ projectId: input.projectId, query: "" })).slice(
               0,
               20,
@@ -136,7 +135,12 @@ export const layer = Layer.effect(
             if (previous?.evidenceKey === evidenceKey) {
               const live =
                 yield* sql`SELECT thread_id FROM orchestration_v2_projection_threads WHERE thread_id = ${previous.threadId} AND deleted_at IS NULL`;
-              if (live.length > 0) return { record: previous, reused: true };
+              if (live.length > 0)
+                return {
+                  record: previous,
+                  snapshot: "unchanged",
+                  memoryCount: index.length,
+                } as const;
             }
             const record = {
               projectId: input.projectId,
@@ -149,11 +153,27 @@ export const layer = Layer.effect(
             };
             const encoded = yield* encodeRecord(record);
             yield* sql`INSERT INTO fork_dreams (project_id, payload_json) VALUES (${input.projectId}, ${encoded}) ON CONFLICT (project_id) DO UPDATE SET payload_json = excluded.payload_json`;
-            return { record, reused: false };
+            return { record, snapshot: "new", memoryCount: index.length } as const;
           }),
         );
-        const { record } = result;
-        yield* launches.launch({
+        if (result === null) {
+          yield* Effect.annotateCurrentSpan({
+            "fork.dream.snapshot": "no_sources",
+            "fork.dream.source_count": 0,
+          });
+          return yield* new ForkCoordinatorError({
+            message: "There is no completed work to review in this project yet.",
+          });
+        }
+        const { record, snapshot } = result;
+        yield* Effect.annotateCurrentSpan({
+          "fork.dream.snapshot": snapshot,
+          "fork.dream.source_count": record.sourceCount,
+          "fork.dream.thread_ref": hashTelemetryId(record.threadId),
+          ...("memoryCount" in result && { "fork.dream.indexed_memory_count": result.memoryCount }),
+        });
+        const messageId = MessageId.make(record.commandId);
+        const launch = yield* launches.launch({
           commandId: record.commandId,
           threadId: record.threadId,
           projectId: record.projectId,
@@ -163,16 +183,25 @@ export const layer = Layer.effect(
           interactionMode: "plan",
           workspaceStrategy: { type: "root" },
           initialMessage: {
-            messageId: MessageId.make(record.commandId),
+            messageId,
             text: record.text,
             attachments: [],
           },
           createdBy: "user",
           creationSource: "web",
         });
+        const run = launch.projection.runs.find(
+          (candidate) => candidate.userMessageId === messageId,
+        );
+        if (run !== undefined) {
+          yield* Effect.annotateCurrentSpan({
+            "fork.dream.run_ref": hashTelemetryId(run.id),
+            "fork.dream.run_status_at_launch": run.status,
+          });
+        }
         return {
           threadId: record.threadId,
-          reused: result.reused,
+          reused: snapshot !== "new",
           sourceCount: record.sourceCount,
         };
       },

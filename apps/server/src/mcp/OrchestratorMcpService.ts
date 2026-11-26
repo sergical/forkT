@@ -1,3 +1,5 @@
+import { hashTelemetryId } from "@t3tools/shared/telemetryId";
+import { privateForkTraces } from "../observability/forkAgentMetadata.ts";
 import {
   forkRoutedThreadId,
   forkRoutingUsageSnapshot,
@@ -1366,6 +1368,7 @@ function timelineItemsWithinBudget(
 }
 
 const make = Effect.gen(function* () {
+  const traceFork = yield* privateForkTraces;
   const random = yield* SecureRandom.SecureRandom;
   const threadManagement = yield* ThreadManagementService.ThreadManagementService;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
@@ -1867,7 +1870,10 @@ const make = Effect.gen(function* () {
     const settings = input.skipProjectEnablementFilter
       ? undefined
       : yield* forkRoutingSettings(input.parent);
-    if (settings === undefined) return yield* resolveTargetRechecking(input);
+    if (settings === undefined) {
+      const target = yield* resolveTargetRechecking(input);
+      return { ...target, routed: false };
+    }
     const inherited = input.parent.thread.modelSelection;
     const target =
       input.target?.options !== undefined &&
@@ -1912,7 +1918,7 @@ const make = Effect.gen(function* () {
           : {}),
       },
     });
-    return resolved;
+    return { ...resolved, routed: true };
   });
 
   const requestKey = (clientRequestId: string | undefined): Effect.Effect<string> =>
@@ -3212,6 +3218,32 @@ const make = Effect.gen(function* () {
             (stored) =>
               stored.event.type === "run.created" && stored.event.threadId === childThreadId,
           );
+          if (traceFork && childThreadId !== null && childRunEvent?.event.type === "run.created") {
+            yield* Effect.annotateCurrentSpan({
+              "sentry.op": "fork.delegation",
+              "fork.project.ref": hashTelemetryId(parent.thread.projectId),
+              "fork.parent.thread_ref": hashTelemetryId(taskEvent.event.payload.threadId),
+              ...(taskEvent.event.payload.runId && {
+                "fork.parent.run_ref": hashTelemetryId(taskEvent.event.payload.runId),
+              }),
+              "fork.thread.ref": hashTelemetryId(childThreadId),
+              "fork.run.ref": hashTelemetryId(childRunEvent.event.payload.id),
+              "fork.task.ref": hashTelemetryId(taskId),
+              "fork.dispatch.replayed": result.replayed === true,
+              ...(result.replayed
+                ? {}
+                : {
+                    "fork.selection.routed": target.routed,
+                    "fork.selection.targeted":
+                      input.target?.model !== undefined ||
+                      input.target?.driverKind !== undefined ||
+                      input.target?.providerInstanceId !== undefined ||
+                      input.target?.options !== undefined,
+                    "fork.selection.high_judgment":
+                      input.highJudgment ?? (input.role === "review" || input.role === "design"),
+                  }),
+            });
+          }
           if (
             childThreadId !== null &&
             childRunEvent?.event.type === "run.created" &&
