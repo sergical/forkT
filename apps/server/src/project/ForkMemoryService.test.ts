@@ -14,6 +14,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Tracer from "effect/Tracer";
 
 import { runMigrations } from "../persistence/Migrations.ts";
 import * as ForkMemoryService from "./ForkMemoryService.ts";
@@ -240,9 +241,17 @@ it.effect("reopens saved memory with its source and revision after closing the d
 it.effect("bounds memory context and keeps retry selection stable while honoring forgetting", () =>
   Effect.gen(function* () {
     const memory = yield* setup;
+    const spans: Array<Tracer.Span> = [];
+    const tracer = Tracer.make({
+      span(options) {
+        const span = new Tracer.NativeSpan(options);
+        spans.push(span);
+        return span;
+      },
+    });
     yield* memory.save(input);
     const request = { projectId, runId: RunId.make("memory-run"), query: "payment retries" };
-    const first = yield* memory.brief(request);
+    const first = yield* memory.brief(request).pipe(Effect.withTracer(tracer));
     assert.include(first, "idempotency key");
     yield* memory.save({
       ...input,
@@ -275,7 +284,16 @@ it.effect("bounds memory context and keeps retry selection stable while honoring
     assert.isAbove(Buffer.byteLength(bounded, "utf8"), 0);
     assert.isAtMost(Buffer.byteLength(bounded, "utf8"), MEMORY_BRIEF_MAX_BYTES);
     yield* memory.forget({ ...input, expectedRevision: 2 });
-    assert.strictEqual(yield* memory.brief(request), "");
+    assert.strictEqual(yield* memory.brief(request).pipe(Effect.withTracer(tracer)), "");
+    const briefs = spans.filter((span) => span.name === "fork.memory.brief");
+    assert.deepStrictEqual(
+      briefs.map((span) => span.attributes.get("fork.memory.selected_count")),
+      [1, 0],
+    );
+    const attributes = JSON.stringify(briefs.map((span) => Object.fromEntries(span.attributes)));
+    for (const privateValue of [request.query, request.runId, input.id, input.title, input.body]) {
+      assert.notInclude(attributes, privateValue);
+    }
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO orchestration_v2_projection_runs (run_id, thread_id, ordinal, provider, status, requested_at, payload_json) VALUES (${request.runId}, ${threadId}, 1, 'codex', 'completed', '2026-11-17', '{}')`;
     yield* sql`DELETE FROM orchestration_v2_projection_runs WHERE run_id = ${request.runId}`;

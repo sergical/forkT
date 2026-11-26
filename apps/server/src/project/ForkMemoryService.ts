@@ -13,6 +13,7 @@ import {
   ProjectId,
   RunId,
 } from "@t3tools/contracts";
+import { hashTelemetryId } from "@t3tools/shared/telemetryId";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -74,6 +75,12 @@ const decodeBriefRows = Schema.decodeUnknownEffect(
 const isMemoryError = Schema.is(ForkMemoryError);
 const scopeOf = (projectId: ForkMemoryKey["projectId"]) =>
   projectId === null ? "personal" : `project:${projectId}`;
+const traceScope = (projectId: ForkMemoryKey["projectId"]) =>
+  projectId === null
+    ? "personal"
+    : projectId === MAIN_COORDINATOR_MEMORY_SCOPE
+      ? "main"
+      : "project";
 const storageError = (cause: unknown) =>
   isMemoryError(cause) ? cause : new ForkMemoryError({ reason: "storage", cause });
 
@@ -97,9 +104,18 @@ const make = Effect.gen(function* () {
     return rows[0];
   });
 
-  const get = Effect.fn("ForkMemoryService.get")(function* (input: ForkMemoryKey) {
+  const get = Effect.fn("fork.memory.read")(function* (input: ForkMemoryKey) {
+    yield* Effect.annotateCurrentSpan("fork.memory.scope", traceScope(input.projectId));
     yield* checkProject(input.projectId);
-    return (yield* read(input))?.payload ?? null;
+    const memory = (yield* read(input))?.payload ?? null;
+    yield* Effect.annotateCurrentSpan({
+      "fork.memory.found": memory !== null,
+      ...(memory && {
+        "fork.memory.revision": memory.revision,
+        "fork.memory.source_count": memory.sources.length,
+      }),
+    });
+    return memory;
   }, Effect.mapError(storageError));
 
   const searchEntries = Effect.fn("ForkMemoryService.searchEntries")(function* (
@@ -127,23 +143,28 @@ const make = Effect.gen(function* () {
     return rows.flatMap((row) => (row.payload === null ? [] : [row.payload]));
   }, Effect.mapError(storageError));
 
-  const search = Effect.fn("ForkMemoryService.search")(function* (input: ForkMemorySearchInput) {
-    return (yield* searchEntries(input)).map(
-      ({ projectId, id, kind, title, body, revision, updatedAt }) => ({
-        projectId,
-        id,
-        kind,
-        title,
-        excerpt: body.slice(0, 300),
-        revision,
-        updatedAt,
-      }),
-    );
+  const search = Effect.fn("fork.memory.search")(function* (input: ForkMemorySearchInput) {
+    yield* Effect.annotateCurrentSpan("fork.memory.scope", traceScope(input.projectId));
+    const entries = yield* searchEntries(input);
+    yield* Effect.annotateCurrentSpan("fork.memory.result_count", entries.length);
+    return entries.map(({ projectId, id, kind, title, body, revision, updatedAt }) => ({
+      projectId,
+      id,
+      kind,
+      title,
+      excerpt: body.slice(0, 300),
+      revision,
+      updatedAt,
+    }));
   });
 
   const index = Effect.fn("ForkMemoryService.index")(function* (input: ForkMemoryIndexInput) {
+    yield* Effect.annotateCurrentSpan("fork.memory.scope", "all");
     const terms = input.query.match(/[\p{L}\p{N}_]+/gu)?.slice(0, 12) ?? [];
-    if (input.query.trim() !== "" && terms.length === 0) return [];
+    if (input.query.trim() !== "" && terms.length === 0) {
+      yield* Effect.annotateCurrentSpan("fork.memory.result_count", 0);
+      return [];
+    }
     // Prefix terms, all required: the palette searches as the user types.
     const match = terms.map((term) => `"${term}"*`).join(" AND ");
     // A deleted project's memories stay hidden, as `checkProject` hides them per scope.
@@ -169,7 +190,7 @@ const make = Effect.gen(function* () {
           LIMIT 50
         `
     ).pipe(Effect.flatMap(decodeRows));
-    return rows.flatMap((row) =>
+    const entries = rows.flatMap((row) =>
       row.payload === null
         ? []
         : [
@@ -183,25 +204,34 @@ const make = Effect.gen(function* () {
             },
           ],
     );
+    yield* Effect.annotateCurrentSpan("fork.memory.result_count", entries.length);
+    return entries;
   }, Effect.mapError(storageError));
 
-  const history = Effect.fn("ForkMemoryService.history")(function* (input: ForkMemoryKey) {
+  const history = Effect.fn("fork.memory.history")(function* (input: ForkMemoryKey) {
+    yield* Effect.annotateCurrentSpan("fork.memory.scope", traceScope(input.projectId));
     yield* checkProject(input.projectId);
     const rows = yield* sql`
       SELECT payload_json AS payload, revision FROM fork_memory_revisions
       WHERE scope = ${scopeOf(input.projectId)} AND memory_id = ${input.id}
       ORDER BY revision DESC LIMIT 100
     `.pipe(Effect.flatMap(decodeRows));
-    return rows.flatMap((row) => (row.payload === null ? [] : [row.payload]));
+    const entries = rows.flatMap((row) => (row.payload === null ? [] : [row.payload]));
+    yield* Effect.annotateCurrentSpan("fork.memory.result_count", entries.length);
+    return entries;
   }, Effect.mapError(storageError));
 
-  const brief = Effect.fn("ForkMemoryService.brief")(function* (input: {
+  const brief = Effect.fn("fork.memory.brief")(function* (input: {
     readonly projectId: ProjectId;
     readonly runId: RunId;
     readonly query: string;
     readonly mainCoordinator?: boolean;
   }) {
-    return yield* sql.withTransaction(
+    yield* Effect.annotateCurrentSpan({
+      "fork.memory.scope": input.mainCoordinator ? "main" : "project",
+      "fork.memory.run_ref": hashTelemetryId(input.runId),
+    });
+    const { selection, reused } = yield* sql.withTransaction(
       Effect.gen(function* () {
         yield* checkProject(input.projectId);
         const receipts = yield* sql`
@@ -235,20 +265,30 @@ const make = Effect.gen(function* () {
           AND r.revision = ${ref.revision} AND m.payload_json IS NOT NULL
       `.pipe(Effect.flatMap(decodeRows)),
         );
-        return buildMemoryBrief(
+        const selection = buildMemoryBrief(
           entries.flatMap((rows) =>
             rows.flatMap((row) => (row.payload === null ? [] : [row.payload])),
           ),
-        ).text;
+        );
+        return { selection, reused: receipts.length > 0 };
       }),
     );
+    yield* Effect.annotateCurrentSpan({
+      "fork.memory.receipt_reused": reused,
+      "fork.memory.selected_count": selection.references.length,
+      "fork.memory.personal_selected_count": selection.references.filter(
+        (ref) => ref.projectId === null,
+      ).length,
+    });
+    return selection.text;
   }, Effect.mapError(storageError));
 
-  const save = Effect.fn("ForkMemoryService.save")(function* (raw: ForkMemorySaveInput) {
+  const save = Effect.fn("fork.memory.save")(function* (raw: ForkMemorySaveInput) {
     const input = yield* decodeSave(raw).pipe(
       Effect.mapError((cause) => new ForkMemoryError({ reason: "invalid", cause })),
     );
-    return yield* sql.withTransaction(
+    yield* Effect.annotateCurrentSpan("fork.memory.scope", traceScope(input.projectId));
+    const { memory, replayed } = yield* sql.withTransaction(
       Effect.gen(function* () {
         yield* checkProject(input.projectId);
         const scope = scopeOf(input.projectId);
@@ -276,7 +316,7 @@ const make = Effect.gen(function* () {
           ) {
             return yield* new ForkMemoryError({ reason: "invalid" });
           }
-          return receipt;
+          return { memory: receipt, replayed: true };
         }
         if ((current?.revision ?? 0) !== input.expectedRevision) {
           return yield* new ForkMemoryError({ reason: "conflict" });
@@ -330,12 +370,20 @@ const make = Effect.gen(function* () {
       `;
         yield* sql`DELETE FROM fork_memory_search WHERE scope = ${scope} AND memory_id = ${input.id}`;
         yield* sql`INSERT INTO fork_memory_search (scope, memory_id, title, body) VALUES (${scope}, ${input.id}, ${input.title}, ${input.body})`;
-        return memory;
+        return { memory, replayed: false };
       }),
     );
+    yield* Effect.annotateCurrentSpan({
+      "fork.memory.replayed": replayed,
+      "fork.memory.revision": memory.revision,
+      "fork.memory.source_count": memory.sources.length,
+      "fork.memory.kind": memory.kind,
+    });
+    return memory;
   }, Effect.mapError(storageError));
 
-  const forget = Effect.fn("ForkMemoryService.forget")(function* (input: ForkMemoryForgetInput) {
+  const forget = Effect.fn("fork.memory.forget")(function* (input: ForkMemoryForgetInput) {
+    yield* Effect.annotateCurrentSpan("fork.memory.scope", traceScope(input.projectId));
     yield* sql.withTransaction(
       Effect.gen(function* () {
         yield* checkProject(input.projectId);
