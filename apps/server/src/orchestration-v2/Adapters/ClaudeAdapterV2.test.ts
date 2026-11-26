@@ -611,6 +611,30 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     );
   });
 
+  it("turns Claude's (Recommended) label into a flag and answers with the offered label", () => {
+    const [question] = ClaudeAdapterV2.claudeUserInputQuestions({
+      questions: [
+        {
+          header: "Chart",
+          question: "Add a chart library or draw it?",
+          options: [
+            { label: "Plain SVG (Recommended)", description: "No new dependency" },
+            { label: "Add a library", description: "Faster to build" },
+          ],
+        },
+      ],
+    });
+    assert.deepEqual(question?.options, [
+      {
+        label: "Plain SVG",
+        value: "Plain SVG (Recommended)",
+        recommended: true,
+        description: "No new dependency",
+      },
+      { label: "Add a library", description: "Faster to build" },
+    ]);
+  });
+
   it("maps canonical read-only never policy to Claude dontAsk with read-only tools", () => {
     const queryPolicy = ClaudeAdapterV2.claudeRuntimeQueryPolicyForRuntimePolicy(
       ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({

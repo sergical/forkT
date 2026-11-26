@@ -121,6 +121,22 @@ export function seedUserInputDraftAnswers<Draft extends { readonly customAnswer?
   return seeds.length === 0 ? drafts : { ...drafts, ...Object.fromEntries(seeds) };
 }
 
+/** Starts single-choice questions on the agent's recommended option, unless already answered. */
+export function seedRecommendedSelections<Draft extends object>(
+  questions: ReadonlyArray<
+    Pick<OrchestrationV2UserInputQuestion, "id" | "options" | "multiSelect">
+  >,
+  drafts: Record<string, Draft>,
+): Record<string, Draft | { selectedOptionValues: ReadonlyArray<string> }> {
+  const seeds = questions.flatMap((question) => {
+    if (question.multiSelect === true || Object.hasOwn(drafts, question.id)) return [];
+    const picks = question.options.filter((option) => option.recommended === true);
+    if (picks.length !== 1) return [];
+    return [[question.id, { selectedOptionValues: [picks[0]!.value ?? picks[0]!.label] }] as const];
+  });
+  return seeds.length === 0 ? drafts : { ...drafts, ...Object.fromEntries(seeds) };
+}
+
 /** Keys a user-input draft by thread so a thread's resolved requests can be pruned together. */
 export function userInputDraftKey(
   environmentId: string,

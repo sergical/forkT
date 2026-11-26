@@ -335,6 +335,11 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
                           >
                             {option.label}
                           </Text>
+                          {option.recommended ? (
+                            <Text className="font-sans text-xs text-primary">
+                              {gt("Recommended")}
+                            </Text>
+                          ) : null}
                           {description ? (
                             <Text
                               className="font-sans text-sm leading-5 text-foreground-muted"

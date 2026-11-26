@@ -1579,6 +1579,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
       description: TrimmedNonEmptyString,
       value: Schema.optional(Schema.String),
       preview: Schema.optional(Schema.String),
+      /** The asking agent's own pick. The Inbox starts with it selected; the user still sends. */
+      recommended: Schema.optional(Schema.Boolean),
     }),
   ),
   multiSelect: Schema.optional(Schema.Boolean),

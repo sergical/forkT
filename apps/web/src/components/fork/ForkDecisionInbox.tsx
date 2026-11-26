@@ -16,6 +16,7 @@ import {
 import {
   derivePendingThreadRequests,
   fullAccessOverrideExplanation,
+  seedRecommendedSelections,
   seedUserInputDraftAnswers,
   type ThreadPendingApproval,
   type ThreadPendingUserInput,
@@ -464,7 +465,7 @@ function InboxQuestion({
     reportFailure: false,
   });
   const [drafts, setDrafts] = useState<Record<string, PendingUserInputDraftAnswer>>(() =>
-    seedUserInputDraftAnswers(prompt.questions, {}),
+    seedRecommendedSelections(prompt.questions, seedUserInputDraftAnswers(prompt.questions, {})),
   );
   const inFlight = useRef(false);
   const [sending, setSending] = useState(false);
@@ -535,6 +536,11 @@ function InboxQuestion({
                   />
                   <span>
                     {option.label}
+                    {option.recommended && (
+                      <span className="ms-2 rounded bg-primary/15 px-1.5 py-0.5 text-xs font-medium text-primary">
+                        {gt("Recommended")}
+                      </span>
+                    )}
                     {option.description && option.description.trim() !== option.label.trim() && (
                       <span className="block text-muted-foreground">{option.description}</span>
                     )}

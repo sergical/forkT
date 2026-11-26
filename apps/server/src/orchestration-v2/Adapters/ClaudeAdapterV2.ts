@@ -5708,6 +5708,8 @@ type PendingClaudeRuntimeRequest =
       readonly answers: Deferred.Deferred<ProviderUserInputAnswers, never>;
     };
 
+const CLAUDE_RECOMMENDED_SUFFIX = /\s*\(recommended\)\s*$/i;
+
 export function claudeUserInputQuestions(
   input: unknown,
 ): ReadonlyArray<OrchestrationV2UserInputQuestion> {
@@ -5731,13 +5733,18 @@ export function claudeUserInputQuestions(
       ? record.options.flatMap((option) => {
           if (typeof option !== "object" || option === null) return [];
           const optionRecord = option as Record<string, unknown>;
-          const label = typeof optionRecord.label === "string" ? optionRecord.label.trim() : "";
+          const offered = typeof optionRecord.label === "string" ? optionRecord.label.trim() : "";
+          // Claude marks its own pick by ending the label with "(Recommended)". The tag becomes a
+          // flag; the value keeps the offered label, so the answer matches what Claude asked.
+          const label = offered.replace(CLAUDE_RECOMMENDED_SUFFIX, "").trim() || offered;
           if (label.length === 0) return [];
+          const recommended = label !== offered;
           const description =
             typeof optionRecord.description === "string" ? optionRecord.description.trim() : "";
           return [
             {
               label,
+              ...(recommended ? { value: offered, recommended: true } : {}),
               description: description || label,
               ...(typeof optionRecord.preview === "string"
                 ? { preview: optionRecord.preview }

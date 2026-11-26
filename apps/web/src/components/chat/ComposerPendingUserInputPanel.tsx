@@ -300,6 +300,11 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                     <div className="min-w-0 flex-1 flex flex-col gap-0.5">
                       <span className="text-sm font-medium" dir={textDirection(option.label)}>
                         {option.label}
+                        {option.recommended && (
+                          <span className="ms-2 rounded bg-primary/15 px-1.5 py-0.5 text-2xs font-medium text-primary">
+                            {gt("Recommended")}
+                          </span>
+                        )}
                       </span>
                       {option.description && option.description !== option.label ? (
                         <span

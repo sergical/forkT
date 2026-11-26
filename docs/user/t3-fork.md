@@ -8,6 +8,6 @@ Use **Dream about this project** after some work has finished. It starts a separ
 
 The [delegation guide](t3-fork-model-routing.md) explains how coordinators choose an account and model for child tasks.
 
-Answer questions, review plans, and approve or decline requests in **Inbox**. The sidebar shows the number of decisions waiting. Each item links to the thread that asked, and Back returns to your place in the queue. A recorded answer clears the item unless the agent asks for another decision. Memory and coordinator state live on the project's environment; they are not synchronized between machines.
+Answer questions, review plans, and approve or decline requests in **Inbox**. The sidebar shows the number of decisions waiting. Each item links to the thread that asked, and Back returns to your place in the queue. A recorded answer clears the item unless the agent asks for another decision. When the agent that asked marks one option as its recommendation, Inbox labels it **Recommended** and starts with it selected; nothing is sent until you press Send. Memory and coordinator state live on the project's environment; they are not synchronized between machines.
 
 The fork defaults to its own data directory, `~/.t3-fork-lab`. Its memory schema has a separate migration history from upstream T3. An explicit home directory still takes precedence.
