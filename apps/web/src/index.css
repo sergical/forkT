@@ -2713,3 +2713,30 @@ code {
 .messages-timeline-scroll:focus-visible {
   outline: none;
 }
+
+@utility inbox-tray-back {
+  background: light-dark(#c7d2fe, #312e81);
+}
+
+@utility inbox-tray-front {
+  background: light-dark(#a5b4fc, #4338ca);
+  border-color: light-dark(#3730a326, #a5b4fc33);
+}
+
+@utility inbox-tray-handle {
+  background: light-dark(#e0e7ffcc, #a5b4fc8c);
+}
+
+@utility inbox-envelope {
+  background: light-dark(#ffd990, #f4bd74);
+  border-color: #78350f26;
+}
+
+@utility inbox-envelope-fold {
+  background: #ffebbc;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+@utility inbox-envelope-eye {
+  border-color: #735047;
+}

@@ -3049,9 +3049,6 @@
   "a76e3ae104cb075e": "Revenir à l’accueil",
   "32f0bf2767460473": "Recharger l’app",
   "e1ee7933d7e81c9e": "Rapport d’erreur",
-  "9fee8d9244661fdf": "Accueil",
-  "a1c2e064ead9e88d": "Impossible de démarrer un nouveau fil",
-  "c9f0735ef91f895b": "Le projet est toujours disponible. Essayez de rouvrir le brouillon.",
   "b3036052b23a9f21": "Impossible d’ouvrir le lien",
   "d504f8f37caf6483": "Reconnectez {label} pour configurer ses fournisseurs.",
   "c8380bf9638c2156": "Connectez un environnement pour configurer ses fournisseurs.",
@@ -12051,7 +12048,6 @@
   "9c73aa0c2e2b4e7d": "Choisir un raccourci",
   "300a948f90c4d75c": "Revenir en arrière",
   "2a50e229df85d553": "Avancer",
-  "8aa6404c8018ea67": "Accueil T3 Code",
   "8e9626aa27cb188a": "Tickets",
   "9d2fc1003e82feb1": "Utilisation",
   "20283eb1dd6119f9": "{count, plural, one {{count} pièce jointe} other {{count} pièces jointes}}",
@@ -12367,7 +12363,6 @@
   "9b0277205d8a9b04": "Tous les fournisseurs",
   "31fd849033990734": "Aucun fournisseur",
   "0d4d01729dabc81e": "{count, plural, one {{count} fournisseur} other {{count} fournisseurs}}",
-  "19ace67a44293eba": "Utilisation",
   "26f2732fd6317056": [
     "L’estimation API exclut",
     " ",
@@ -13043,5 +13038,6 @@
   "db47bb6ae4e361a6": "Mise à jour prête, redémarrer",
   "534806a154a6cb9a": "{count, plural, one {Le redémarrage arrêtera {count} exécution d’agent.} other {Le redémarrage arrêtera {count} exécutions d’agent.}}",
   "3e516a6075c1cdae": "L’application n’a pas pu redémarrer. Rouvre cet avis pour réessayer.",
-  "bd90fd96c98e9c6f": "Redémarrer"
+  "bd90fd96c98e9c6f": "Redémarrer",
+  "f2a954acf9396664": "Tout est à jour."
 }

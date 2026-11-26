@@ -275,6 +275,7 @@ function makePendingCustomAnswerSetter(input: {
 export function usePendingThreadRequests(input: {
   readonly environmentId: EnvironmentId;
   readonly activeThreadId: ThreadId | null;
+  readonly requestedQuestionId?: string | null;
   readonly serverProjection: ThreadStructure | null;
   readonly supportsQuestionAttachments: boolean;
   readonly composerDraftTarget: ScopedThreadRef | DraftId;
@@ -329,10 +330,20 @@ export function usePendingThreadRequests(input: {
     pendingRequests.approvals.length === 0
       ? NO_PENDING_APPROVALS
       : derivePendingApprovals(pendingRequests.approvals);
-  const pendingUserInputs =
+  const availableUserInputs =
     pendingRequests.userInputs.length === 0
       ? NO_PENDING_USER_INPUTS
       : derivePendingUserInputs(pendingRequests.userInputs);
+  const requestedQuestion = input.requestedQuestionId
+    ? availableUserInputs.find((question) => question.requestId === input.requestedQuestionId)
+    : undefined;
+  const pendingUserInputs =
+    requestedQuestion && requestedQuestion !== availableUserInputs[0]
+      ? [
+          requestedQuestion,
+          ...availableUserInputs.filter((question) => question !== requestedQuestion),
+        ]
+      : availableUserInputs;
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const activePendingRequestKey = userInputDraftKey(
     environmentId,

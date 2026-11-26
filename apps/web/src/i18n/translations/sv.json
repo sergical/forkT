@@ -3049,9 +3049,6 @@
   "a76e3ae104cb075e": "Gå till startsidan",
   "32f0bf2767460473": "Läs in appen igen",
   "e1ee7933d7e81c9e": "Felrapport",
-  "9fee8d9244661fdf": "Hem",
-  "a1c2e064ead9e88d": "Kunde inte starta en ny tråd",
-  "c9f0735ef91f895b": "Projektet är fortfarande tillgängligt. Försök öppna utkastet igen.",
   "b3036052b23a9f21": "Kunde inte öppna länken",
   "d504f8f37caf6483": "Återanslut {label} för att konfigurera dess leverantörer.",
   "c8380bf9638c2156": "Anslut en miljö för att konfigurera dess leverantörer.",
@@ -12059,7 +12056,6 @@
   "9c73aa0c2e2b4e7d": "Välj kortkommando",
   "300a948f90c4d75c": "Gå tillbaka",
   "2a50e229df85d553": "Gå framåt",
-  "8aa6404c8018ea67": "T3 Code start",
   "8e9626aa27cb188a": "Ärenden",
   "9d2fc1003e82feb1": "Användning",
   "20283eb1dd6119f9": "{count, plural, one {{count} bilaga} other {{count} bilagor}}",
@@ -12375,7 +12371,6 @@
   "9b0277205d8a9b04": "Alla leverantörer",
   "31fd849033990734": "Inga leverantörer",
   "0d4d01729dabc81e": "{count, plural, one {{count} leverantör} other {{count} leverantörer}}",
-  "19ace67a44293eba": "Användning",
   "26f2732fd6317056": [
     "API-uppskattningen utesluter",
     " ",
@@ -13050,5 +13045,6 @@
   "db47bb6ae4e361a6": "Uppdatering klar, starta om",
   "534806a154a6cb9a": "{count, plural, one {Omstarten stoppar {count} agentkörning.} other {Omstarten stoppar {count} agentkörningar.}}",
   "3e516a6075c1cdae": "Det gick inte att starta om appen. Öppna det här meddelandet igen för att försöka på nytt.",
-  "bd90fd96c98e9c6f": "Starta om"
+  "bd90fd96c98e9c6f": "Starta om",
+  "f2a954acf9396664": "Allt är klart."
 }

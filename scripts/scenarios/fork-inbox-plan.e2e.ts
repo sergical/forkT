@@ -79,7 +79,7 @@ test(
     await queue.getByRole("button", "Request changes").tap();
     await queue.getByRole("textbox", "Plan changes").fill("Use a smaller fixture.");
     await queue.getByRole("button", "Send changes").tap();
-    await expect(queue.getByText("No decisions need your attention.")).toBeVisible();
+    await expect(queue.getByText("All caught up.")).toBeVisible();
 
     await t3.open(workers.get("Implement worker")!);
     await expect(

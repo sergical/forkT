@@ -9,16 +9,18 @@ test(
   "Inbox delivers a hidden worker's decision once and respects source replies",
   WEB,
   async ({ t3, app, screen, browser }) => {
+    const validationContext =
+      "Decide how the API client validates search results before we ship the dashboard.";
     const first = await t3.thread({
-      project: await t3.project("First project"),
-      title: "First worker",
-      messages: ["Ask for a preference."],
+      project: await t3.project("API client"),
+      title: "Validation review",
+      messages: [validationContext],
       model: "question",
     });
     const second = await t3.thread({
-      project: await t3.project("Second project"),
-      title: "Second worker",
-      messages: ["Ask for a different project's preference."],
+      project: await t3.project("Web dashboard"),
+      title: "Settings form",
+      messages: ["Choose whether the settings form accepts flexible input or only defined fields."],
       model: "question",
     });
     const origin = app.baseUrl ?? "";
@@ -43,23 +45,25 @@ test(
       throw new Error("Replay did not leave a question for the first worker.");
     }
 
+    await browser.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
     await t3.open();
     const main = screen.getByRole("button", "Main coordinator");
     await main.tap();
     await expect(browser).toHaveURL(/fork%3Aglobal%3A/);
-    await expect(screen.getByText("First worker", { exact: true })).toHaveCount(0);
-    await expect(screen.getByText("Second worker", { exact: true })).toHaveCount(0);
+    await expect(screen.getByText("Validation review", { exact: true })).toHaveCount(0);
+    await expect(screen.getByText("Settings form", { exact: true })).toHaveCount(0);
 
     const inbox = screen.getByRole("link", /^Inbox/);
     await expect(screen.getByRole("link", "Inbox 2", { exact: true })).toBeVisible();
     await inbox.tap();
     await expect(browser).toHaveURL(/\/inbox$/);
     const queue = screen.getByRole("main", { exact: true });
-    const firstForm = browser.locator("form").filter({ hasText: "First worker" });
-    await expect(queue.getByText("First project · First worker")).toBeVisible();
-    await expect(queue.getByText("Second project · Second worker")).toBeVisible();
+    const firstForm = browser.locator("form").filter({ hasText: "Validation review" });
+    await expect(queue.getByText("API client · Validation review")).toBeVisible();
+    await expect(queue.getByText(validationContext)).toBeVisible();
+    await expect(queue.getByText("Web dashboard · Settings form")).toBeVisible();
     await browser.setViewport({ width: 1280, height: 310 });
-    const bottomOrigin = queue.getByRole("link", /project · .* worker/).last();
+    const bottomOrigin = queue.getByRole("link", / · /).last();
     const bottomHref = await bottomOrigin.getAttribute("href");
     await browser.evaluate(() => {
       document.querySelector('[data-scroll-restoration-id="fork-inbox"]')?.scrollBy(0, 110);
@@ -73,6 +77,7 @@ test(
     expect(position).toBeGreaterThan(0);
     await bottomOrigin.tap();
     await expect(browser).toHaveURL(new RegExp(bottomHref + "$"));
+    await expect(screen.getByRole("button", /^Strict schemas/)).toBeVisible();
     await browser.evaluate(() => {
       history.back();
       return null;
@@ -81,21 +86,21 @@ test(
     await expect(bottomOrigin).toBeVisible();
     expect(await scrollTop()).toBe(position);
     await browser.setViewport({ width: 1280, height: 800 });
-    await app.screenshot("both-projects-waiting");
+    await app.screenshot("dark-inbox-populated");
     await firstForm.getByRole("radio", /Strict schemas/).tap();
     await firstForm.getByRole("button", "Send answer").tap();
     await expect(queue.getByText("Answer recorded")).toBeVisible();
     await expect(screen.getByRole("link", "Inbox 1", { exact: true })).toBeVisible();
-    await expect(queue.getByText("First project · First worker")).toHaveCount(0);
-    await expect(queue.getByText("Second project · Second worker")).toBeVisible();
+    await expect(queue.getByText("API client · Validation review")).toHaveCount(0);
+    await expect(queue.getByText("Web dashboard · Settings form")).toBeVisible();
 
     await app.open(`/${environment}/${encodeURIComponent(first.threadId)}`);
     await expect(screen.getByText("plan questions fixture complete", { exact: false })).toHaveCount(
       1,
     );
     await app.open("/inbox");
-    await expect(queue.getByText("First project · First worker")).toHaveCount(0);
-    await expect(queue.getByText("Second project · Second worker")).toBeVisible();
+    await expect(queue.getByText("API client · Validation review")).toHaveCount(0);
+    await expect(queue.getByText("Web dashboard · Settings form")).toBeVisible();
 
     const staleRetry = await runPromise(
       Effect.gen(function* () {
@@ -123,8 +128,12 @@ test(
       ),
     ).toBe(true);
 
-    await queue.getByRole("link", "Second project · Second worker").tap();
-    await expect(browser).toHaveURL(new RegExp(encodeURIComponent(second.threadId) + "$"));
+    await queue.getByRole("link", "Web dashboard · Settings form").tap();
+    await expect(browser).toHaveURL(
+      new RegExp(encodeURIComponent(second.threadId) + "#inbox-question="),
+    );
+    await expect(screen.getByRole("button", /^Strict schemas/)).toBeVisible();
+    await app.screenshot("dark-inbox-origin");
     await screen.getByRole("button", /^Strict schemas/).tap();
     await screen.getByRole("button", "Submit", { exact: true }).tap();
     await expect(screen.getByText("plan questions fixture complete", { exact: false })).toHaveCount(
@@ -132,8 +141,9 @@ test(
     );
     await app.open("/inbox");
     await expect(screen.getByRole("link", "Inbox", { exact: true })).toBeVisible();
-    await expect(queue.getByText("No decisions need your attention.")).toBeVisible();
-    await app.screenshot("empty-after-source-response");
+    await expect(queue.getByText("All caught up.")).toBeVisible();
+    await app.screenshot("dark-inbox-empty");
+    await browser.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     await browser.setViewport({ width: 390, height: 800 });
     await app.open(`/${environment}/${encodeURIComponent(second.threadId)}`);
     const sidebar = screen.getByRole("button", "Toggle main sidebar");
@@ -142,6 +152,7 @@ test(
     await expect(browser).toHaveURL(/\/inbox$/);
     await expect(queue.getByRole("heading", "Inbox")).toBeVisible();
     await expect(sidebar).toHaveAttribute("aria-pressed", "false");
+    await app.screenshot("light-inbox-narrow");
     await sidebar.tap();
     await expect(screen.getByRole("button", "Main coordinator")).toBeVisible();
   },

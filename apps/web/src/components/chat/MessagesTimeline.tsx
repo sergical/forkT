@@ -241,6 +241,8 @@ interface MessagesTimelineProps {
   respondingRequestIds?: TimelineRowSharedState["respondingRequestIds"];
   canOperateThread?: boolean;
   onRespondToApproval?: TimelineRowSharedState["onRespondToApproval"];
+  inboxItemId?: string | null;
+  inboxPlanId?: string | null;
   citationRequest?: AssistantCitationRequest | null;
   citationHistory?: CitedHistory;
   onCiteAssistantText?: (
@@ -371,6 +373,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
   respondingRequestIds = EMPTY_RESPONDING_REQUEST_IDS,
   canOperateThread = false,
   onRespondToApproval,
+  inboxItemId = null,
+  inboxPlanId = null,
   citationRequest = null,
   citationHistory = CITED_HISTORY_LOADING,
   onCiteAssistantText,
@@ -786,6 +790,20 @@ const ConversationTimeline = memo(function ConversationTimeline({
     revealedMessageId,
   });
   const rows = useStableRows(rawRows, listIdentityKey);
+  const inboxOriginIndex =
+    inboxItemId || inboxPlanId
+      ? rows.findIndex((row) => {
+          if (row.kind === "proposed-plan") return row.proposedPlan.id === inboxPlanId;
+          if (row.kind === "event") return row.projectedItem.sourceItemId === inboxItemId;
+          if (row.kind === "work" || row.kind === "work-live") {
+            return row.groupedEntries.some(
+              (entry) => entry.projectedItem?.sourceItemId === inboxItemId,
+            );
+          }
+          return false;
+        })
+      : -1;
+  const revealedInboxOrigin = useRef<string | null>(null);
   const matchedApprovalRequestIds = new Set<string>();
   for (const row of pendingApprovalRequestIds.size > 0 ? rows : []) {
     const entries =
@@ -824,6 +842,33 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const listOpenedOn = nextOpening.mounted ? nextOpening.identity : null;
   const viewportRef = useRef<TimelineViewport | null>(null);
   const navigateTimeline = () => viewportRef.current?.navigate({ releasesFollow: true });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reveals the linked Inbox item after the virtual list restores its previous position
+  useLayoutEffect(() => {
+    const id = inboxItemId ?? inboxPlanId;
+    const list = listRef.current;
+    if (!id) {
+      revealedInboxOrigin.current = null;
+      return;
+    }
+    const key = `${listIdentityKey}:${id}`;
+    if (
+      !list ||
+      restoringThreadPosition ||
+      inboxOriginIndex < 0 ||
+      revealedInboxOrigin.current === key
+    )
+      return;
+    revealedInboxOrigin.current = key;
+    viewportRef.current?.navigate({ releasesFollow: true });
+    void list.scrollToIndex({ index: inboxOriginIndex, animated: false });
+  }, [
+    inboxItemId,
+    inboxPlanId,
+    inboxOriginIndex,
+    listIdentityKey,
+    listRef,
+    restoringThreadPosition,
+  ]);
   const restoreReady = restoringThreadPosition && rows.length > 0;
   // Z: syncs LegendList's scroll position with which thread it shows. The list
   // is not keyed per thread and reports no "new data" event, and the restore

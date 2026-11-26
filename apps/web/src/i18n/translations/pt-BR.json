@@ -3049,9 +3049,6 @@
   "a76e3ae104cb075e": "Ir para o início",
   "32f0bf2767460473": "Recarregar o app",
   "e1ee7933d7e81c9e": "Relatório de erro",
-  "9fee8d9244661fdf": "Início",
-  "a1c2e064ead9e88d": "Não foi possível iniciar uma nova thread",
-  "c9f0735ef91f895b": "O projeto continua disponível. Tente abrir o rascunho novamente.",
   "b3036052b23a9f21": "Não foi possível abrir o link",
   "d504f8f37caf6483": "Reconecte {label} para configurar os provedores.",
   "c8380bf9638c2156": "Conecte um ambiente para configurar os provedores.",
@@ -12051,7 +12048,6 @@
   "9c73aa0c2e2b4e7d": "Escolher atalho",
   "300a948f90c4d75c": "Voltar",
   "2a50e229df85d553": "Avançar",
-  "8aa6404c8018ea67": "Início do T3 Code",
   "8e9626aa27cb188a": "Issues",
   "9d2fc1003e82feb1": "Uso",
   "20283eb1dd6119f9": "{count, plural, one {{count} anexo} other {{count} anexos}}",
@@ -12367,7 +12363,6 @@
   "9b0277205d8a9b04": "Todos os provedores",
   "31fd849033990734": "Nenhum provedor",
   "0d4d01729dabc81e": "{count, plural, one {{count} provedor} other {{count} provedores}}",
-  "19ace67a44293eba": "Uso",
   "26f2732fd6317056": [
     "A estimativa da API exclui",
     " ",
@@ -13043,5 +13038,6 @@
   "db47bb6ae4e361a6": "Atualização pronta, reiniciar",
   "534806a154a6cb9a": "{count, plural, one {Reiniciar interromperá {count} execução de agente.} other {Reiniciar interromperá {count} execuções de agente.}}",
   "3e516a6075c1cdae": "Não foi possível reiniciar o aplicativo. Abra este aviso novamente para tentar de novo.",
-  "bd90fd96c98e9c6f": "Reiniciar"
+  "bd90fd96c98e9c6f": "Reiniciar",
+  "f2a954acf9396664": "Tudo em dia."
 }

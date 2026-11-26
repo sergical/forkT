@@ -27,6 +27,7 @@ import {
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { newMessageId } from "~/lib/utils";
 import { Link } from "@tanstack/react-router";
+import { ArrowUpRightIcon } from "lucide-react";
 import { Atom } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
 import { T, useGT, useMessages, Var } from "gt-react";
@@ -113,9 +114,11 @@ export function useInboxDecisionCount(environmentId: EnvironmentId) {
 export function ForkDecisionInbox({
   environmentId,
   projectId,
+  emptyState,
 }: {
   environmentId: EnvironmentId;
   projectId: ProjectId | null;
+  emptyState?: ReactNode;
 }) {
   const projects = useProjects();
   const [recorded, setRecorded] = useState<{ message: string } | null>(null);
@@ -129,11 +132,12 @@ export function ForkDecisionInbox({
           {recorded.message}
         </p>
       )}
-      {candidates.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          <T>No decisions need your attention.</T>
-        </p>
-      )}
+      {candidates.length === 0 &&
+        (emptyState ?? (
+          <p className="text-sm text-muted-foreground">
+            <T>No decisions need your attention.</T>
+          </p>
+        ))}
       {candidates.map((thread) => (
         <InboxThread
           key={thread.id}
@@ -172,22 +176,40 @@ function InboxThread({
     );
   }
   const { approvals, userInputs, plans, sourceOnly } = inboxDecisions(thread, projection);
-  const origin = (
+  const questionContext = (requestId: string) => {
+    const runId = projection.turnItems.findLast(
+      (item) => item.type === "user_input_request" && item.requestId === requestId,
+    )?.runId;
+    const messageId = projection.runs.find((run) => run.id === runId)?.userMessageId;
+    const text = projection.messages
+      .find(
+        (message) => message.id === messageId && message.role === "user" && !message.workflowScript,
+      )
+      ?.text.trim()
+      .replace(/\s+/g, " ");
+    return text && text.length > 180 ? text.slice(0, 177).trimEnd() + "…" : text;
+  };
+  const origin = (target: { question?: string; item?: string; plan?: string }) => (
     <Link
       to="/$environmentId/$threadId"
       params={buildThreadRouteParams(threadRef)}
-      className="text-xs text-muted-foreground hover:underline"
+      hash={new URLSearchParams(
+        Object.entries(target).flatMap(([kind, id]) => (id ? [[`inbox-${kind}`, id]] : [])),
+      ).toString()}
+      hashScrollIntoView={false}
+      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
     >
       {projectName && projectName !== thread.title
         ? `${projectName} · ${thread.title}`
         : thread.title}
+      <ArrowUpRightIcon aria-hidden className="size-3" />
     </Link>
   );
   return (
     <div className="divide-y">
       {sourceOnly && (
         <section className="space-y-2 py-3">
-          {origin}
+          {origin({ item: thread.source.pendingRuntimeRequest?.id ?? "" })}
           <p className="text-sm">
             <T>Open the thread to respond to this request.</T>
           </p>
@@ -196,7 +218,12 @@ function InboxThread({
       {approvals.map((approval) => (
         <InboxApproval
           key={approval.requestId}
-          origin={origin}
+          origin={origin({
+            item:
+              projection.turnItems.findLast(
+                (item) => item.type === "approval_request" && item.requestId === approval.requestId,
+              )?.id ?? "",
+          })}
           threadRef={threadRef}
           approval={approval}
           onRecorded={onRecorded}
@@ -205,8 +232,9 @@ function InboxThread({
       {userInputs.map((prompt) => (
         <InboxQuestion
           key={prompt.requestId}
-          origin={origin}
+          origin={origin({ question: prompt.requestId })}
           threadRef={threadRef}
+          context={questionContext(prompt.requestId)}
           prompt={prompt}
           onRecorded={onRecorded}
         />
@@ -223,7 +251,7 @@ function InboxThread({
           }
           thread={thread}
           threadRef={threadRef}
-          origin={origin}
+          origin={origin({ plan: plan.id })}
         />
       ))}
     </div>
@@ -422,11 +450,13 @@ function InboxQuestion({
   threadRef,
   prompt,
   origin,
+  context,
   onRecorded,
 }: {
   threadRef: ScopedThreadRef;
   prompt: ThreadPendingUserInput;
   origin: ReactNode;
+  context: string | undefined;
   onRecorded: (message: string) => void;
 }) {
   const canRespond = useEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope);
@@ -473,6 +503,7 @@ function InboxQuestion({
       }}
     >
       {origin}
+      {context && <p className="text-sm text-muted-foreground">{context}</p>}
       {prompt.questions.map((question) => {
         const draft = drafts[question.id];
         return (
@@ -504,7 +535,7 @@ function InboxQuestion({
                   />
                   <span>
                     {option.label}
-                    {option.description && (
+                    {option.description && option.description.trim() !== option.label.trim() && (
                       <span className="block text-muted-foreground">{option.description}</span>
                     )}
                     {option.preview && (

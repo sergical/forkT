@@ -628,6 +628,7 @@ export default function ChatView(props: ChatViewProps) {
     select: (location) => location.state.assistantCitationActivation ?? location.state.__TSR_key,
   });
   const citationLocation = { href: citationHref, key: citationKey };
+  const inboxOrigin = new URLSearchParams(citationHref.split("#", 2)[1] ?? "");
   const locationCitation = assistantCitationFromLocation(citationLocation.href);
   const citationActivation = citationLocation.key ?? citationLocation.href;
   const citationRequest = (
@@ -1491,6 +1492,7 @@ export default function ChatView(props: ChatViewProps) {
   } = usePendingThreadRequests({
     environmentId,
     activeThreadId,
+    requestedQuestionId: inboxOrigin.get("inbox-question"),
     serverProjection,
     supportsQuestionAttachments,
     composerDraftTarget,
@@ -3661,6 +3663,8 @@ export default function ChatView(props: ChatViewProps) {
                   activeThreadKey={activeThreadKey}
                   syncing={threadSyncPhase !== null}
                   detailLoading={threadDetailLoading}
+                  inboxItemId={inboxOrigin.get("inbox-item")}
+                  inboxPlanId={inboxOrigin.get("inbox-plan")}
                   citationRequest={citationRequest}
                   citationHistory={citationHistory}
                   onCiteAssistantText={citeAssistantTextStable}
