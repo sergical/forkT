@@ -87,7 +87,9 @@ test(
     expect(await scrollTop()).toBe(position);
     await browser.setViewport({ width: 1280, height: 800 });
     await app.screenshot("dark-inbox-populated");
-    await firstForm.getByRole("radio", /Strict schemas/).tap();
+    // The agent marked "Strict schemas (Recommended)": Inbox starts with it selected.
+    await expect(firstForm.getByText("Recommended", { exact: true })).toBeVisible();
+    await expect(firstForm.getByRole("radio", /Strict schemas/)).toBeChecked();
     await firstForm.getByRole("button", "Send answer").tap();
     await expect(queue.getByText("Answer recorded")).toBeVisible();
     await expect(screen.getByRole("link", "Inbox 1", { exact: true })).toBeVisible();

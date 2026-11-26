@@ -129,8 +129,6 @@ const UserInputQuestionOption = Schema.Struct({
   label: TrimmedNonEmptyStringSchema,
   description: Schema.String,
   value: Schema.optional(Schema.String),
-  /** The asking agent's own pick. */
-  recommended: Schema.optional(Schema.Boolean),
 });
 
 export const UserInputQuestion = Schema.Struct({

@@ -121,7 +121,24 @@ export function seedUserInputDraftAnswers<Draft extends { readonly customAnswer?
   return seeds.length === 0 ? drafts : { ...drafts, ...Object.fromEntries(seeds) };
 }
 
-/** Starts single-choice questions on the agent's recommended option, unless already answered. */
+const RECOMMENDED_SUFFIX = /\s*\(recommended\)\s*$/i;
+
+/**
+ * Agents (Claude, Codex, OpenCode, Grok) mark their own pick by ending its label with
+ * "(Recommended)". The tag becomes a flag; the value keeps the offered label, so the answer
+ * still matches what the agent asked.
+ */
+function readRecommendation<Option extends OrchestrationV2UserInputQuestion["options"][number]>(
+  option: Option,
+): Option {
+  const label = option.label.replace(RECOMMENDED_SUFFIX, "").trim();
+  if (label.length === 0 || label === option.label) return option;
+  // Adapters fill a missing description with the label; keep that copy without the tag too.
+  const description = option.description === option.label ? label : option.description;
+  return { ...option, label, description, value: option.value ?? option.label, recommended: true };
+}
+
+/** Starts each unanswered question with the agent's recommended options selected. */
 export function seedRecommendedSelections<Draft extends object>(
   questions: ReadonlyArray<
     Pick<OrchestrationV2UserInputQuestion, "id" | "options" | "multiSelect">
@@ -129,10 +146,13 @@ export function seedRecommendedSelections<Draft extends object>(
   drafts: Record<string, Draft>,
 ): Record<string, Draft | { selectedOptionValues: ReadonlyArray<string> }> {
   const seeds = questions.flatMap((question) => {
-    if (question.multiSelect === true || Object.hasOwn(drafts, question.id)) return [];
-    const picks = question.options.filter((option) => option.recommended === true);
-    if (picks.length !== 1) return [];
-    return [[question.id, { selectedOptionValues: [picks[0]!.value ?? picks[0]!.label] }] as const];
+    if (Object.hasOwn(drafts, question.id)) return [];
+    const picks = question.options
+      .filter((option) => option.recommended === true)
+      .map((option) => option.value ?? option.label);
+    // A single-choice question with more than one pick has no clear recommendation.
+    if (picks.length === 0 || (question.multiSelect !== true && picks.length > 1)) return [];
+    return [[question.id, { selectedOptionValues: picks }] as const];
   });
   return seeds.length === 0 ? drafts : { ...drafts, ...Object.fromEntries(seeds) };
 }
@@ -280,6 +300,7 @@ export function derivePendingThreadRequests(
         createdAt: DateTime.formatIso(request.createdAt),
         questions: item.questions.map((question) => ({
           ...question,
+          options: question.options.map(readRecommendation),
           multiSelect: question.multiSelect ?? false,
         })),
         responseCapability,
