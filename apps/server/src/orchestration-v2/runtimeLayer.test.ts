@@ -12449,11 +12449,28 @@ it.layer(layerSharedApplicationDataPlaneTest)("main coordinator project handoff"
             ),
             Effect.provideService(McpContext.McpInvocationContext, scope),
           );
-        for (let attempt = 0; attempt < 2; attempt++)
-          assert.include(yield* call(attempt === 0 ? kind : "writing"), {
-            link: McpContext.threadLinkFor(scope, destination, "Project coordinator"),
-          });
+        const receipt = {
+          link: McpContext.threadLinkFor(scope, destination, "Project coordinator"),
+        };
+        assert.include(yield* call(kind), receipt);
+        const run = (yield* orchestrator.getThreadProjection(destination)).runs[0]!;
+        const now = yield* DateTime.now;
+        yield* (yield* EventSink.EventSinkV2).write({
+          commandId: CommandId.make("complete-" + kind),
+          events: [
+            {
+              id: EventId.make("complete-" + kind),
+              type: "run.updated",
+              threadId: destination,
+              runId: run.id,
+              occurredAt: now,
+              payload: { ...run, status: "completed", startedAt: now, completedAt: now },
+            },
+          ],
+        });
+        assert.include(yield* call("writing"), receipt);
         const projection = yield* orchestrator.getThreadProjection(destination);
+        assert.equal(projection.runs[0]?.status, "completed");
         assert.lengthOf(projection.runs, 1);
         assert.lengthOf(projection.messages, 1);
         assert.include(projection.messages[0]!.text, source);

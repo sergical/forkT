@@ -9,6 +9,7 @@ import * as Effect from "effect/Effect";
 import * as ForkDreamService from "../../../project/ForkDreamService.ts";
 import * as ForkCoordinatorService from "../../../project/ForkCoordinatorService.ts";
 import * as ForkMemoryService from "../../../project/ForkMemoryService.ts";
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { handoffProjectDeliverable } from "../../handoffProjectDeliverable.ts";
 import { readCaller } from "../../threadAccess.ts";
@@ -64,6 +65,16 @@ export const layer = McpToolAccess.toLayer(MemoryToolkit, {
           });
         }
         return yield* handoffProjectDeliverable(input.handoff);
+      }
+      if (!input.global && input.message !== undefined) {
+        const { thread } = yield* McpInvocationContext.McpInvocationContext;
+        if (thread !== undefined && isForkMainCoordinatorThreadId(thread.threadId)) {
+          return yield* new OrchestratorMcpFailure({
+            code: "invalid_request",
+            message:
+              "From Main, dispatch project work with global:false and handoff containing projectId, source and a stable requestId. This returns the project receipt.",
+          });
+        }
       }
       const coordinators = yield* ForkCoordinatorService.ForkCoordinatorService;
       return yield* coordinators

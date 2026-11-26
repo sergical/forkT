@@ -99,7 +99,7 @@ const Forget = Tool.make("t3_memory_forget", {
 const Coordinator = Tool.make("t3_coordinator_open", {
   ...shared,
   description:
-    "Open a persistent T3 fork coordinator. global:false selects the project's coordinator; global:true selects this environment's main coordinator. Reuses its conversation, or creates an idle one. From main, pass global:false and handoff to queue a known-project deliverable with its source and get an openable receipt in one call. Needs full-access/default mode.",
+    "Open a persistent T3 fork coordinator. global:false selects the project's coordinator; global:true selects this environment's main coordinator. Reuses its conversation, or creates an idle one. From main, pass global:false and handoff to queue work for a known project, including investigations with its source and get an openable receipt in one call. Needs full-access/default mode.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     ...ForkCoordinatorOpenInput.fields,
