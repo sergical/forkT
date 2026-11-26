@@ -70,8 +70,10 @@ export const layer = Layer.unwrap(
                     ? ForkTraceSampler.make(otlp, {
                         ...ForkTraceSampler.defaultForkTracePolicy,
                         spanAttributes: {
-                          "sentry.release": resource.attributes["sentry.release"],
-                          "t3.build.commit": resource.attributes["t3.build.commit"],
+                          "sentry.release":
+                            config.otelEnvironment.resourceAttributes["sentry.release"],
+                          "t3.build.commit":
+                            config.otelEnvironment.resourceAttributes["t3.build.commit"],
                         },
                       })
                     : otlp,

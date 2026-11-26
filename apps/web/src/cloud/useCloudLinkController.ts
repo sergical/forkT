@@ -150,7 +150,11 @@ export function useCloudLinkController(environmentId: EnvironmentId | null) {
     if (!canManageLink()) return false;
     const wantsLink = desired.managedTunnel || desired.publish;
     if (wantsLink && readLinkState() === null) return false;
-    const tokenResult = await settlePromise(() => getToken(resolveRelayClerkTokenOptions()));
+    const tokenResult = await settlePromise(() =>
+      wantsLink || isSignedIn === true
+        ? getToken(resolveRelayClerkTokenOptions())
+        : Promise.resolve(null),
+    );
     if (!canManageLink()) return false;
 
     // A failed mutation may have partially applied, so refresh server state on every exit.
