@@ -243,6 +243,7 @@ it("opens a linked Linear issue from an inactive thread's sidebar badge", async 
     // AppRoot brings its own router.
     router: false,
   });
+  await page.getByRole("button", { name: "Show threads", exact: true }).click();
   const badge = page.getByRole("button", {
     name: `Issue ${issue.displayKey}: ${issue.title}, Open`,
   });
