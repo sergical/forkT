@@ -1846,6 +1846,7 @@ const buildDesktopBundlesUnlocked = Effect.fn("buildDesktopBundlesUnlocked")(fun
   appVersion: string,
   verbose: boolean,
 ) {
+  const commitHash = yield* resolveGitCommitHash(repoRoot);
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const spawnCommand = yield* resolveSpawnCommand("vp", ["run", "build:desktop"]);
@@ -1870,7 +1871,7 @@ const buildDesktopBundlesUnlocked = Effect.fn("buildDesktopBundlesUnlocked")(fun
           ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             cwd: repoRoot,
             shell: spawnCommand.shell,
-            env: { APP_VERSION: appVersion },
+            env: { APP_VERSION: appVersion, T3CODE_BUILD_COMMIT: commitHash },
             extendEnv: true,
           }),
           { label: "vp run build:desktop", verbose },

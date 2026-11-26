@@ -157,7 +157,7 @@ export const layer = Layer.effect(
           commandId: record.commandId,
           threadId: record.threadId,
           projectId: record.projectId,
-          title: "T3 fork · Dream review",
+          title: "forkT · Dream review",
           modelSelection: record.modelSelection,
           runtimeMode: "approval-required",
           interactionMode: "plan",

@@ -162,7 +162,7 @@ export const layer = Layer.effect(
         commandId: CommandId.make(`open:${claimed.threadId}`),
         threadId: claimed.threadId,
         projectId: claimed.projectId,
-        title: input.global ? "T3 fork · Main coordinator" : "T3 fork · Project coordinator",
+        title: input.global ? "forkT · Main coordinator" : "forkT · Project coordinator",
         modelSelection: claimed.modelSelection,
         runtimeMode: claimed.runtimeMode,
         interactionMode: "default",

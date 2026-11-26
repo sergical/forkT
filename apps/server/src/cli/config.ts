@@ -23,6 +23,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 import { Argument, Flag } from "effect/cli";
 import * as CliError from "effect/cli/CliError";
 
+import packageJson from "../../package.json" with { type: "json" };
 import { readBootstrapEnvelope } from "../bootstrap.ts";
 import { resolveServiceLauncherMode } from "../cloud/serviceLauncherClient.ts";
 import * as ServerConfig from "../config.ts";
@@ -30,6 +31,8 @@ import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import { isServerOwnershipHeld } from "../serverOwnership.ts";
 import { resolveHostCliCommand } from "./invocation.ts";
+
+declare const __T3CODE_BUILD_COMMIT__: string | undefined;
 
 const modeFlag = Flag.Literals("mode", ServerConfig.RuntimeMode.literals).pipe(
   Flag.withDescription("Runtime mode. `desktop` keeps loopback defaults unless overridden."),
@@ -533,6 +536,11 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
           ...otel,
           resourceAttributes: {
             "deployment.environment.name": "production",
+            "service.version": packageJson.version,
+            ...(typeof __T3CODE_BUILD_COMMIT__ !== "undefined" &&
+            /^[a-f0-9]{40}$/.test(__T3CODE_BUILD_COMMIT__)
+              ? { "t3.build.commit": __T3CODE_BUILD_COMMIT__ }
+              : {}),
             ...otel.resourceAttributes,
           },
         }

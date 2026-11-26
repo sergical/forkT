@@ -177,7 +177,7 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   const gt = useGT();
   return (
     <Link
-      aria-label={gt("T3 fork home")}
+      aria-label={gt("Home")}
       className={cn(
         "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
         onBackdrop ? "text-white" : "text-foreground",
@@ -192,16 +192,14 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
 function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5 text-sm font-medium tracking-tight">
-      {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product name */}
-      <img src="/fork-mark.svg" alt="T3 fork" className="size-5 shrink-0" />
+      <img src="/fork-mark.svg" alt="forkT" className="size-5 shrink-0" />
       <span
         className={cn(
           "truncate [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
           onBackdrop ? "text-white/70" : "text-muted-foreground",
         )}
       >
-        {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product wordmark */}
-        {"T3 fork"}
+        {"forkT"}
       </span>
     </span>
   );

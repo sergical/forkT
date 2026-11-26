@@ -13043,7 +13043,6 @@
   "108f917b81c7a65d": "Open main coordinator",
   "f7624725c30391e7": "Dream about this project",
   "8fc8ed9b0e258f75": "Coordinators and Inbox",
-  "38dd049704ace50c": "T3 fork home",
   "db47bb6ae4e361a6": "Update ready, restart",
   "534806a154a6cb9a": "{count, plural, one {Restarting will stop {count} agent run.} other {Restarting will stop {count} agent runs.}}",
   "3e516a6075c1cdae": "The app could not restart. Open this notice again to retry.",

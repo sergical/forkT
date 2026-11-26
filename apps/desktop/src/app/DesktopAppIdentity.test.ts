@@ -200,9 +200,9 @@ describe("DesktopAppIdentity", () => {
 
         const runtimeName = calls.setName[0];
         assert.isDefined(runtimeName);
-        assert.equal(runtimeName, `T3 fork ${stage}`);
+        assert.equal(runtimeName, `forkT ${stage}`);
         assert.match(runtimeName.replaceAll(" ", ""), /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/);
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, `T3 fork (${stage})`);
+        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, `forkT (${stage})`);
       }),
       { calls, environment },
     );
