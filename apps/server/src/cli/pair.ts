@@ -536,9 +536,7 @@ export const pairCommand = Command.make("pair", {
   tailscale: tailscaleFlag,
   tailscaleServePort: tailscaleServePortFlag,
 }).pipe(
-  Command.withDescription(
-    "Mint a pairing token for a running server and print it as a QR code.",
-  ),
+  Command.withDescription("Mint a pairing token for a running server and print it as a QR code."),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
       const cliLogLevel = yield* GlobalFlag.LogLevel;
