@@ -243,6 +243,7 @@ interface MessagesTimelineProps {
   onRespondToApproval?: TimelineRowSharedState["onRespondToApproval"];
   inboxItemId?: string | null;
   inboxPlanId?: string | null;
+  sourceMessageId?: MessageId | null;
   citationRequest?: AssistantCitationRequest | null;
   citationHistory?: CitedHistory;
   onCiteAssistantText?: (
@@ -375,6 +376,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   onRespondToApproval,
   inboxItemId = null,
   inboxPlanId = null,
+  sourceMessageId = null,
   citationRequest = null,
   citationHistory = CITED_HISTORY_LOADING,
   onCiteAssistantText,
@@ -672,7 +674,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
   );
   const toolCallVisibility =
     findActive && preferredToolCallVisibility === "zen" ? "hideAll" : preferredToolCallVisibility;
-  const revealedMessageId = citationRequest?.citation.messageId ?? null;
+  const revealedMessageId = citationRequest?.citation.messageId ?? sourceMessageId;
+  const revealKey = citationRequest?.key ?? sourceMessageId;
   // Imported turns and post-steer work fold under synthetic keys, not the entries' run ids.
   const findFoldRunIds = findActive
     ? timelineTurnFoldRunIdsByEntryId({
@@ -703,20 +706,18 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const [citationExpandedFor, setCitationExpandedFor] = useState<string | null>(null);
   // Back/Forward can restore an earlier activation key, so the marker clears
   // between activations and a revisit opens the fold again.
-  if (!citationRequest && citationExpandedFor !== null) setCitationExpandedFor(null);
+  if (!revealKey && citationExpandedFor !== null) setCitationExpandedFor(null);
   const citedEntry =
-    citationRequest &&
-    citationExpandedFor !== citationRequest.key &&
-    citationHistory._tag !== "failed"
+    revealKey && citationExpandedFor !== revealKey && citationHistory._tag !== "failed"
       ? timelineEntries.find(
           (entry) =>
             (entry.kind === "message" &&
-              entry.message.role === "assistant" &&
-              entry.message.id === citationRequest.citation.messageId) ||
-            (entry.kind === "sent-message" && entry.id === citationRequest.citation.messageId),
+              (sourceMessageId !== null || entry.message.role === "assistant") &&
+              entry.message.id === revealedMessageId) ||
+            (entry.kind === "sent-message" && entry.id === revealedMessageId),
         )
       : undefined;
-  if (citationRequest && citedEntry) {
+  if (revealKey && citedEntry) {
     const citedRunId = (
       findFoldRunIds ??
       timelineTurnFoldRunIdsByEntryId({
@@ -729,7 +730,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
         revealedMessageId,
       })
     ).get(citedEntry.id);
-    setCitationExpandedFor(citationRequest.key);
+    setCitationExpandedFor(revealKey);
     if (citedRunId) {
       setExpandedRunIds((previous) =>
         previous.has(citedRunId) ? previous : new Set(previous).add(citedRunId),
@@ -790,9 +791,14 @@ const ConversationTimeline = memo(function ConversationTimeline({
     revealedMessageId,
   });
   const rows = useStableRows(rawRows, listIdentityKey);
-  const inboxOriginIndex =
-    inboxItemId || inboxPlanId
+  const linkedRowIndex =
+    sourceMessageId || inboxItemId || inboxPlanId
       ? rows.findIndex((row) => {
+          if (sourceMessageId)
+            return (
+              (row.kind === "message" && row.message.id === sourceMessageId) ||
+              (row.kind === "sent-message" && row.id === sourceMessageId)
+            );
           if (row.kind === "proposed-plan") return row.proposedPlan.id === inboxPlanId;
           if (row.kind === "event") return row.projectedItem.sourceItemId === inboxItemId;
           if (row.kind === "work" || row.kind === "work-live") {
@@ -803,7 +809,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
           return false;
         })
       : -1;
-  const revealedInboxOrigin = useRef<string | null>(null);
+  const revealedLinkedRow = useRef<string | null>(null);
   const matchedApprovalRequestIds = new Set<string>();
   for (const row of pendingApprovalRequestIds.size > 0 ? rows : []) {
     const entries =
@@ -841,30 +847,34 @@ const ConversationTimeline = memo(function ConversationTimeline({
   if (nextOpening !== listOpening) setListOpening(nextOpening);
   const listOpenedOn = nextOpening.mounted ? nextOpening.identity : null;
   const viewportRef = useRef<TimelineViewport | null>(null);
+  const [findListReady, setFindListReady] = useState(false);
   const navigateTimeline = () => viewportRef.current?.navigate({ releasesFollow: true });
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reveals the linked Inbox item after the virtual list restores its previous position
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reveals the linked row after the virtual list restores its previous position
   useLayoutEffect(() => {
-    const id = inboxItemId ?? inboxPlanId;
+    const id = sourceMessageId ?? inboxItemId ?? inboxPlanId;
     const list = listRef.current;
     if (!id) {
-      revealedInboxOrigin.current = null;
+      revealedLinkedRow.current = null;
       return;
     }
     const key = `${listIdentityKey}:${id}`;
     if (
       !list ||
       restoringThreadPosition ||
-      inboxOriginIndex < 0 ||
-      revealedInboxOrigin.current === key
+      (sourceMessageId && !findListReady) ||
+      linkedRowIndex < 0 ||
+      revealedLinkedRow.current === key
     )
       return;
-    revealedInboxOrigin.current = key;
+    revealedLinkedRow.current = key;
     viewportRef.current?.navigate({ releasesFollow: true });
-    void list.scrollToIndex({ index: inboxOriginIndex, animated: false });
+    void list.scrollToIndex({ index: linkedRowIndex, animated: false });
   }, [
     inboxItemId,
     inboxPlanId,
-    inboxOriginIndex,
+    sourceMessageId,
+    findListReady,
+    linkedRowIndex,
     listIdentityKey,
     listRef,
     restoringThreadPosition,
@@ -886,12 +896,12 @@ const ConversationTimeline = memo(function ConversationTimeline({
       listIdentityKey,
       listOpenedOn,
       rememberedPosition,
-      citationPending: citationRequest !== null,
+      citationPending: revealedMessageId !== null,
       releaseForFind: findOpenAtOpening,
       onPositioned: setPositionedThreadKey,
     });
   }, [
-    citationRequest,
+    revealedMessageId,
     findOpenAtOpening,
     listIdentityKey,
     listOpenedOn,
@@ -922,7 +932,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     viewport: timelineViewportElement,
     onManualNavigation: navigateTimeline,
   });
-  const [findListReady, setFindListReady] = useState(false);
+
   const handleListLoad = () => {
     onCitationListLoad();
     setFindListReady(true);
@@ -1455,7 +1465,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const renderItem = ({ item }: { item: MessagesTimelineRow }) => (
     <TimelineRowCtx value={sharedState}>
       <div
-        className="messages-timeline-row-frame"
+        className={cn(
+          "messages-timeline-row-frame",
+          sourceMessageId &&
+            item.kind === "message" &&
+            item.message.id === sourceMessageId &&
+            "rounded-md bg-accent/60",
+        )}
         onPlayCapture={(event) => onAudioPlaybackChange(item.id, event)}
         onPauseCapture={(event) => onAudioPlaybackChange(item.id, event)}
         onEndedCapture={(event) => onAudioPlaybackChange(item.id, event)}
@@ -1560,7 +1576,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
               renderItem={renderItem}
               estimatedItemSize={90}
               initialScrollAtEnd={
-                !findActive && citationRequest === null && rememberedPosition?.atEnd !== false
+                !findActive && revealedMessageId === null && rememberedPosition?.atEnd !== false
               }
               // Legend needs a data refresh to mount new pins without a scroll event.
               dataVersion={`${readyCitationRequest?.key ?? listIdentityKey}:${alwaysRenderKeys.join(",")}`}

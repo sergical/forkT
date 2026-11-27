@@ -1,3 +1,4 @@
+import { ForkDreamResults, ForkDreamReview } from "./ForkDreamReview";
 import { ChildThreadApprovals } from "./ChildThreadApprovals";
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { useOpenThreadInspector } from "./thread-inspector-navigation";
@@ -1543,6 +1544,19 @@ function ThreadDetailBody(
             <WorkspaceMutationIdProvider threadRef={props.selectedThreadDetailRef}>
               <ColumnWidth width={columnWidth}>
                 <ThreadFeed
+                  dreamReview={
+                    props.serverConfig?.environment.capabilities.forkDreamReviews === true &&
+                    props.selectedThreadDetailRef ? (
+                      props.selectedThread.id.startsWith("fork:dream:") ? (
+                        <ForkDreamReview
+                          key={selectedThreadKey}
+                          thread={props.selectedThreadDetailRef}
+                        />
+                      ) : (
+                        <ForkDreamResults thread={props.selectedThreadDetailRef} />
+                      )
+                    ) : null
+                  }
                   toolCallVisibility={toolCallVisibility}
                   environmentId={props.environmentId}
                   threadId={props.selectedThread.id}

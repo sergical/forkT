@@ -62,6 +62,8 @@ export interface EnvironmentShellState {
   readonly generation: number;
   /** Sequences of the thread removals applied since the latest authoritative snapshot. */
   readonly removedAt: ReadonlyMap<ThreadId, number>;
+  /** Last Dream completion observed since the authoritative snapshot, for open result readers. */
+  readonly dreamResultSequence?: number;
 }
 
 const EMPTY_REMOVALS: ReadonlyMap<ThreadId, number> = new Map();
@@ -331,6 +333,7 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
       if (deltas.length > 0 && Option.isSome(next.snapshot)) {
         let sequence = next.snapshot.value.snapshotSequence;
         let removedAt: Map<ThreadId, number> | undefined;
+        let dreamResultSequence = next.dreamResultSequence;
         for (const delta of deltas) {
           if (delta.sequence <= sequence) continue;
           switch (delta.kind) {
@@ -339,6 +342,16 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
               removedAt.set(delta.threadId, delta.sequence);
               break;
             case "thread.updated":
+              if (delta.thread.id.startsWith("fork:dream:") && delta.thread.latestRunCompletedAt) {
+                const before = next.snapshot.value.threads.find(
+                  (thread) => thread.id === delta.thread.id,
+                );
+                if (
+                  before?.latestRunId !== delta.thread.latestRunId ||
+                  !before.latestRunCompletedAt
+                )
+                  dreamResultSequence = delta.sequence;
+              }
               // Replayed catch-up deltas may predate a backward host clock correction.
               if (!waiting) {
                 observeServerTime(
@@ -359,6 +372,7 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
         next = {
           ...next,
           removedAt: removedAt ?? next.removedAt,
+          ...(dreamResultSequence === undefined ? {} : { dreamResultSequence }),
           snapshot: Option.some(applyShellStreamEvents(next.snapshot.value, deltas)),
           status: waiting ? "synchronizing" : "live",
           error: Option.none(),

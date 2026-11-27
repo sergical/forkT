@@ -9,7 +9,10 @@ import {
 } from "./citationProcedure";
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
 
-function scriptedHistory(snapshots: ReadonlyArray<CitedThreadSnapshot | null>) {
+function scriptedHistory(
+  snapshots: ReadonlyArray<CitedThreadSnapshot | null>,
+  includeUserMessages = false,
+) {
   const controller = new AbortController();
   let reads = 0;
   let loads = 0;
@@ -20,6 +23,7 @@ function scriptedHistory(snapshots: ReadonlyArray<CitedThreadSnapshot | null>) {
     },
     run: (results: ReadonlyArray<"loaded" | "noop" | "error"> = []) =>
       loadCitedHistory({
+        includeUserMessages,
         signal: controller.signal,
         readThread: async () => snapshots[Math.min(reads++, snapshots.length - 1)] ?? null,
         loadThrough: async () => {
@@ -39,15 +43,17 @@ describe("loadCitedHistory", () => {
     expect(history.loads).toBe(0);
   });
 
-  it("pages history toward a response outside the loaded window", async () => {
-    const history = scriptedHistory([
-      notLoaded,
-      notLoaded,
-      { message: "assistant", hasMoreHistory: true },
-    ]);
-    await expect(history.run()).resolves.toEqual({ _tag: "found" });
-    expect(history.loads).toBe(2);
-  });
+  it.each(["assistant", "other"] as const)(
+    "pages to an older %s message linked as Dream evidence",
+    async (message) => {
+      const history = scriptedHistory(
+        [notLoaded, notLoaded, { message, hasMoreHistory: true }],
+        true,
+      );
+      await expect(history.run()).resolves.toEqual({ _tag: "found" });
+      expect(history.loads).toBe(2);
+    },
+  );
 
   it("reports an unavailable response once the thread has no more history", async () => {
     const history = scriptedHistory([notLoaded, { message: null, hasMoreHistory: false }]);

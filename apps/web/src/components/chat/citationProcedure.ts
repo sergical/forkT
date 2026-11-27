@@ -64,6 +64,7 @@ const UNAVAILABLE = {
  */
 export async function loadCitedHistory(input: {
   readonly signal: AbortSignal;
+  readonly includeUserMessages?: boolean;
   readonly readThread: () => Promise<CitedThreadSnapshot | null>;
   readonly loadThrough: () => Promise<HistoryPageResult>;
 }): Promise<CitedHistoryOutcome> {
@@ -71,7 +72,8 @@ export async function loadCitedHistory(input: {
     const thread = await input.readThread();
     if (thread === null || input.signal.aborted) return { _tag: "aborted" };
     if (thread.loadFailed) return COULD_NOT_LOAD;
-    if (thread.message === "assistant") return { _tag: "found" };
+    if (thread.message === "assistant" || (input.includeUserMessages && thread.message === "other"))
+      return { _tag: "found" };
     if (thread.message === "other") {
       return {
         _tag: "failed",
@@ -153,6 +155,7 @@ export function citedThreadSnapshot(input: {
 }
 
 interface CitedHistoryKey {
+  readonly includeUserMessages?: boolean;
   readonly key: string;
   readonly environmentId: AssistantCitationRequest["citation"]["environmentId"];
   readonly threadId: AssistantCitationRequest["citation"]["threadId"];
@@ -191,7 +194,7 @@ function waitForSettledThread(
  * Plain-object keys compare structurally, so one activation is one procedure.
  */
 const citedHistoryAtom = Atom.family(
-  ({ key, environmentId, threadId, messageId }: CitedHistoryKey) => {
+  ({ key, environmentId, threadId, messageId, includeUserMessages = false }: CitedHistoryKey) => {
     const ref = { environmentId, threadId };
     const threadAtom = environmentThreadDetails.quietThreadAtom(ref);
     const historyAtom = environmentThreadDetails.historyAtom(ref);
@@ -210,6 +213,7 @@ const citedHistoryAtom = Atom.family(
       const controller = new AbortController();
       get.addFinalizer(() => controller.abort());
       void loadCitedHistory({
+        includeUserMessages,
         signal: controller.signal,
         readThread: () => waitForSettledThread(get.registry, settledThreadAtom, controller.signal),
         loadThrough: async () => {
@@ -225,7 +229,7 @@ const citedHistoryAtom = Atom.family(
         },
       }).then((outcome) => {
         if (outcome._tag === "aborted") return;
-        if (outcome._tag === "failed") {
+        if (outcome._tag === "failed" && !includeUserMessages) {
           toastManager.add({
             type: "warning",
             title: m(outcome.title),
@@ -241,15 +245,6 @@ const citedHistoryAtom = Atom.family(
 
 const NO_CITED_HISTORY_ATOM = Atom.make<CitedHistory>({ _tag: "loading" });
 
-export function useCitedHistory(request: AssistantCitationRequest | null): CitedHistory {
-  return useAtomValue(
-    request === null
-      ? NO_CITED_HISTORY_ATOM
-      : citedHistoryAtom({
-          key: request.key,
-          environmentId: request.citation.environmentId,
-          threadId: request.citation.threadId,
-          messageId: request.citation.messageId,
-        }),
-  );
+export function useCitedHistory(request: CitedHistoryKey | null): CitedHistory {
+  return useAtomValue(request === null ? NO_CITED_HISTORY_ATOM : citedHistoryAtom(request));
 }

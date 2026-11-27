@@ -61,16 +61,24 @@ function isInboxThread(thread: EnvironmentThreadShell) {
 
 type InboxProjection = NonNullable<ReturnType<typeof useQuietThreadProjection>>["projection"];
 
+function inboxPlans(thread: EnvironmentThreadShell, projection: InboxProjection) {
+  // A plan-mode provider can format the original Dream journal as a plan.
+  const dreamRun = thread.id.startsWith("fork:dream:")
+    ? projection.runs.find((run) => run.ordinal === 1)?.id
+    : undefined;
+  return projection.plans.filter(
+    (plan): plan is Extract<OrchestrationV2PlanArtifact, { kind: "proposed_plan" }> =>
+      plan.kind === "proposed_plan" && plan.status === "active" && plan.runId !== dreamRun,
+  );
+}
+
 function inboxDecisions(thread: EnvironmentThreadShell, projection: InboxProjection) {
   const pending = derivePendingThreadRequests(projection);
   const approvals = pending.approvals.filter((approval) => approval.responseCapability === "live");
   const userInputs = pending.userInputs.filter(
     (prompt) => prompt.responseCapability !== "not_resumable",
   );
-  const plans = projection.plans.filter(
-    (plan): plan is Extract<OrchestrationV2PlanArtifact, { kind: "proposed_plan" }> =>
-      plan.kind === "proposed_plan" && plan.status === "active",
-  );
+  const plans = inboxPlans(thread, projection);
   const sourceRequest = thread.source.pendingRuntimeRequest;
   const sourceOnly =
     sourceRequest?.userOnly === true &&
@@ -84,7 +92,17 @@ const inboxThreadsAtom = Atom.family((environmentId: EnvironmentId) =>
     get(environmentThreadShells.threadRefsAtom).flatMap((ref) => {
       if (ref.environmentId !== environmentId) return [];
       const thread = get(environmentThreadShells.quietThreadShellAtom(ref));
-      return thread !== null && isInboxThread(thread) ? [thread] : [];
+      if (thread === null || !isInboxThread(thread)) return [];
+      if (
+        thread.id.startsWith("fork:dream:") &&
+        !thread.hasPendingApprovals &&
+        !thread.hasPendingUserInput &&
+        !thread.source.pendingRuntimeRequest?.userOnly
+      ) {
+        const projection = get(environmentThreadDetails.quietThreadAtom(ref))?.projection;
+        if (!projection || inboxPlans(thread, projection).length === 0) return [];
+      }
+      return [thread];
     }),
   ),
 );

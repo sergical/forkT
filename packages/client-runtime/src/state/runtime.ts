@@ -1060,6 +1060,41 @@ export function createEnvironmentRpcQueryAtomFamily<
   });
 }
 
+export function createGuardedEnvironmentRpcQuery<
+  R,
+  ER,
+  Tag extends ClientGuardedRpcTag & EnvironmentUnaryRpcTag,
+>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | R, ER>,
+  options: {
+    readonly tag: Tag;
+    readonly label: string;
+    readonly refreshTrigger: (target: {
+      readonly environmentId: EnvironmentIdType;
+      readonly input: EnvironmentRpcInput<Tag>;
+    }) => Atom.Atom<unknown>;
+  },
+) {
+  const permissions = createCommandPermissions(runtime, options.tag);
+  return {
+    permissionAtom: permissions.permissionAtom,
+    query: createEnvironmentQueryAtomFamily(runtime, {
+      label: options.label,
+      idleTtlMs: 0,
+      staleTimeMs: 0,
+      refreshTrigger: options.refreshTrigger,
+      execute: Effect.fnUntraced(function* (input: EnvironmentRpcInput<Tag>) {
+        const registry = yield* AtomRegistry.AtomRegistry;
+        return yield* requestGuarded(options.tag, input).pipe(
+          Effect.provideService(RpcPermissionGuard, {
+            authorize: (id, _method, payload) => permissions.authorize(registry, id, payload),
+          }),
+        );
+      }),
+    }),
+  };
+}
+
 export function createEnvironmentRpcSubscriptionAtomFamily<
   R,
   ER,

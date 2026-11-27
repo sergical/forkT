@@ -400,6 +400,7 @@ export interface ThreadFeedProps {
   readonly runlessWorkActive?: boolean;
   readonly listRef: RefObject<LegendListRef | null>;
   readonly freeze: SharedValue<boolean>;
+  readonly dreamReview?: React.ReactNode;
   readonly anchorMessageId: MessageId | null;
   /** A message to scroll to once it is in the feed; see `onJumpedToMessage`. */
   readonly jumpToMessageId?: MessageId | null;
@@ -4381,8 +4382,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
               </>
             }
             ListFooterComponent={
-              props.pendingHandoff || props.statusLines?.length ? (
+              props.dreamReview || props.pendingHandoff || props.statusLines?.length ? (
                 <>
+                  {props.dreamReview}
                   {props.pendingHandoff ? (
                     <ThreadHandoffDivider
                       environmentId={props.environmentId}

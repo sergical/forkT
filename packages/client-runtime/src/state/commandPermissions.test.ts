@@ -80,6 +80,7 @@ describe("command permissions", () => {
         WS_METHODS.forkMemoryForget,
         WS_METHODS.forkCoordinatorOpen,
         WS_METHODS.forkDreamStart,
+        WS_METHODS.forkDreamDecide,
       ]) {
         const memory = createCommandPermissions(runtime, tag);
         yield* memory.authorize(registry, env);
@@ -175,6 +176,8 @@ describe("command permissions", () => {
   );
 
   it.effect.each([
+    { method: WS_METHODS.forkDreamReview, scope: AuthOrchestrationReadScope },
+    { method: WS_METHODS.forkDreamResults, scope: AuthOrchestrationReadScope },
     { method: WS_METHODS.serverRunStorageCleanup, scope: AuthSettingsWriteScope },
     { method: WS_METHODS.serverReclaimDatabaseSpace, scope: AuthEnvironmentMaintainScope },
     { method: WS_METHODS.workspaceAddTaskFolderRepository, scope: AuthSourceControlWriteScope },

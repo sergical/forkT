@@ -1,3 +1,4 @@
+import { ForkDreamResults, ForkDreamReview, ForkDreamSourceReturn } from "./fork/ForkDreamReview";
 import { m } from "../i18n/messages";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { useGT, useMessages } from "gt-react";
@@ -77,13 +78,13 @@ import {
   type ResponseContextRecord,
   type ChatFileAttachment,
   type EnvironmentId,
-  type MessageId,
+  MessageId,
   type ModelSelection,
   type PreviewAnnotationPayload,
   ProviderInstanceId,
   type ServerProvider,
   type ScopedThreadRef,
-  type ThreadId,
+  ThreadId,
   ProviderInteractionMode,
   resolveIdleCompaction,
   RuntimeMode,
@@ -639,7 +640,27 @@ export default function ChatView(props: ChatViewProps) {
       : null
   ) as AssistantCitationRequest | null;
   useSideChatCitationReveal(embedded ? null : routeThreadRef, locationCitation, citationActivation);
-  const citationHistory = useCitedHistory(citationRequest);
+  const linkedMessage = embedded ? null : inboxOrigin.get("message");
+  const sourceMessageId = linkedMessage ? MessageId.make(linkedMessage) : null;
+  const sourceDream = sourceMessageId ? inboxOrigin.get("dream") : null;
+  const citationHistory = useCitedHistory(
+    citationRequest
+      ? {
+          key: citationRequest.key,
+          environmentId,
+          threadId,
+          messageId: citationRequest.citation.messageId,
+        }
+      : sourceMessageId
+        ? {
+            key: citationActivation,
+            environmentId,
+            threadId,
+            messageId: sourceMessageId,
+            includeUserMessages: true,
+          }
+        : null,
+  );
   const { resolvedTheme } = useTheme();
   const composerRuntimeMode = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.runtimeMode ?? null,
@@ -3629,6 +3650,20 @@ export default function ChatView(props: ChatViewProps) {
           >
             <ThreadFind onClose={focusComposerStable} />
             {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
+            {sourceDream?.startsWith("fork:dream:") ? (
+              <ForkDreamSourceReturn
+                thread={{ environmentId, threadId: ThreadId.make(sourceDream) }}
+                unavailable={citationHistory._tag === "failed"}
+              />
+            ) : isServerThread &&
+              activeThreadRef &&
+              serverConfig?.environment.capabilities.forkDreamReviews === true ? (
+              threadId.startsWith("fork:dream:") ? (
+                <ForkDreamReview key={activeThreadKey} thread={activeThreadRef} />
+              ) : (
+                <ForkDreamResults thread={activeThreadRef} />
+              )
+            ) : null}
             <ChatBannerLane
               environmentId={activeThread.environmentId}
               providerStatus={visibleProviderStatus}
@@ -3663,6 +3698,7 @@ export default function ChatView(props: ChatViewProps) {
                   activeThreadKey={activeThreadKey}
                   syncing={threadSyncPhase !== null}
                   detailLoading={threadDetailLoading}
+                  sourceMessageId={sourceMessageId}
                   inboxItemId={inboxOrigin.get("inbox-item")}
                   inboxPlanId={inboxOrigin.get("inbox-plan")}
                   citationRequest={citationRequest}
