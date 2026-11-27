@@ -128,6 +128,7 @@ describe("runMigrations", () => {
       assert.deepStrictEqual(forkHistory, [
         { migration_id: 1, name: "ForkMemory" },
         { migration_id: 2, name: "ForkCoordinators" },
+        { migration_id: 3, name: "ProjectHandoffReturns" },
       ]);
 
       // query_only rejects BEGIN IMMEDIATE, which CLI startup would otherwise take on the live database.
