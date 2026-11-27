@@ -1,8 +1,5 @@
 import type {
-  OrchestrationV2AppThread,
-  OrchestrationV2ConversationMessage,
   OrchestrationV2DomainEvent,
-  OrchestrationV2ProviderTurn,
   OrchestrationV2PlanArtifact,
   OrchestrationV2Run,
   OrchestrationV2StoredEvent,
@@ -16,9 +13,11 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Tracer from "effect/Tracer";
 
+import * as ForkTurnMessages from "./ForkTurnMessages.ts";
 import { privateForkTraces } from "./forkAgentMetadata.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -103,6 +102,8 @@ const clip = (value: unknown) => {
       : text;
 };
 
+const encodeMessages = Schema.encodeEffect(Schema.fromJsonString(Schema.Json));
+
 const TERMINAL_RUN = new Set(["completed", "interrupted", "failed", "cancelled", "rolled_back"]);
 const TERMINAL_ITEM = new Set(["completed", "failed", "cancelled", "interrupted"]);
 const FAILED = new Set(["failed"]);
@@ -126,13 +127,20 @@ const toolName = (item: OrchestrationV2TurnItem): string | undefined => {
   }
 };
 
+type TurnEvent = Extract<OrchestrationV2DomainEvent, { type: "provider-turn.updated" }>;
+
 interface OpenRun {
+  readonly instanceId: string;
+  pendingTurn?: TurnEvent;
   readonly span: Tracer.Span;
   readonly model: string;
   readonly attributes: Record<string, unknown>;
 }
 
-export const make = Effect.fnUntraced(function* (environmentId: string) {
+export const make = Effect.fnUntraced(function* (
+  environmentId: string,
+  readTurnMessages?: Effect.Success<ReturnType<typeof ForkTurnMessages.make>>,
+) {
   const environmentRef = hashTelemetryId(environmentId);
   // Fork-owned thread IDs such as fork:global:1 repeat on fresh installations.
   const conversationAttributes = (threadId: string) => ({
@@ -146,6 +154,9 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
   const privateMetadata = yield* privateForkTraces;
   const drivers = new Map<string, string>();
   const runs = new Map<string, OpenRun>();
+  // Promotion and requeue can move a user message and rewrite its creation date.
+  // Remember only its earliest observed timestamp, never its text.
+  const inputCreatedAt = new Map<string, string>();
   // The spawn transfer is committed before the child reaches its provider.
   const spawnParents = new Map<string, string>();
   // Finished runs, so tools and subagents that end after their run still join it.
@@ -190,27 +201,39 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
     completedAt: DateTime.Utc,
     failed: boolean,
     attributes: Record<string, unknown>,
-    origin?: Tracer.AnySpan,
   ) => {
     const run = runId == null ? undefined : (runs.get(runId) ?? finished.get(runId));
-    const span = start(name, run?.span ?? origin, nanos(startedAt), {
+    const span = start(name, run?.span, nanos(startedAt), {
       ...run?.attributes,
       ...attributes,
     });
     span.end(nanos(completedAt), failed ? Exit.fail(name) : Exit.void);
   };
 
-  const endRun = (id: string, open: OpenRun, status: string, endTime: bigint) => {
+  const endRun = Effect.fnUntraced(function* (
+    id: string,
+    open: OpenRun,
+    status: string,
+    endTime: bigint,
+  ) {
+    if (open.pendingTurn) yield* flushTurn(open);
     runs.delete(id);
     remember(finished, id, open);
     open.span.attribute("t3.run.status", status);
     open.span.end(endTime, FAILED.has(status) ? Exit.fail(status) : Exit.void);
-  };
+  });
 
-  const onRun = (run: OrchestrationV2Run, occurredAt: DateTime.Utc) => {
+  const onRun = Effect.fnUntraced(function* (run: OrchestrationV2Run, occurredAt: DateTime.Utc) {
+    if (readTurnMessages && run.status === "cancelled" && run.startedAt === null) {
+      const requestedAt = DateTime.formatIso(run.requestedAt);
+      if ((inputCreatedAt.get(run.userMessageId) ?? requestedAt) >= requestedAt) {
+        remember(inputCreatedAt, run.userMessageId, requestedAt, MAX_TRACED);
+      }
+    }
     const open = runs.get(run.id);
     const stale = run.completedAt !== null && isStale(run.completedAt, occurredAt);
-    if (open === undefined && run.startedAt !== null && !stale && !traced.has(`run:${run.id}`)) {
+    const startedAt = run.startedAt ?? (run.status === "failed" ? run.completedAt : null);
+    if (open === undefined && startedAt !== null && !stale && !traced.has(`run:${run.id}`)) {
       markTraced(`run:${run.id}`);
       const model = run.modelSelection.model;
       const driver = drivers.get(run.providerInstanceId);
@@ -228,48 +251,46 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
         ...conversationAttributes(run.threadId),
         "t3.run.id": run.id,
       };
-      const span = start(
-        `invoke_agent ${run.providerInstanceId}`,
-        origins.get(run.userMessageId),
-        nanos(run.startedAt),
-        {
-          ...shared,
-          "sentry.op": "gen_ai.invoke_agent",
-          "gen_ai.operation.name": "invoke_agent",
-          "gen_ai.agent.name": run.providerInstanceId,
-          "t3.delegated_task.id": run.delegatedTaskId ?? undefined,
-        },
-      );
+      const span = start("fork.run", origins.get(run.userMessageId), nanos(startedAt), {
+        ...shared,
+        "sentry.op": "fork.run",
+        "t3.delegated_task.id": run.delegatedTaskId ?? undefined,
+      });
       if (privateMetadata && parentId) {
         const parent = runs.get(parentId) ?? finished.get(parentId);
         if (parent)
           span.addLinks([{ span: parent.span, attributes: { "fork.link": "subagent_spawn" } }]);
       }
       origins.delete(run.userMessageId);
-      runs.set(run.id, { span, model, attributes: shared });
+      runs.set(run.id, { span, model, instanceId: run.providerInstanceId, attributes: shared });
       if (runs.size > MAX_OPEN_RUNS) {
         const [oldestId, oldest] = runs.entries().next().value!;
-        endRun(oldestId, oldest, "untracked", nanos(occurredAt));
+        yield* endRun(oldestId, oldest, "untracked", nanos(occurredAt));
       }
     }
     const current = runs.get(run.id);
     if (current !== undefined && TERMINAL_RUN.has(run.status)) {
-      endRun(run.id, current, run.status, nanos(run.completedAt ?? occurredAt));
+      yield* endRun(run.id, current, run.status, nanos(run.completedAt ?? occurredAt));
     }
-  };
+  });
 
-  const onProviderTurn = (
-    turn: OrchestrationV2ProviderTurn,
-    runId: string | null | undefined,
-    occurredAt: DateTime.Utc,
-  ) => {
+  const emitTurn = Effect.fnUntraced(function* (event: TurnEvent) {
+    const { payload: turn, runId } = event;
+    if (turn.startedAt === null || turn.completedAt === null) return;
     const usage = turn.turnTokenUsage;
     const context = turn.tokenUsage;
-    if (!TERMINAL_ITEM.has(turn.status) || turn.startedAt === null || turn.completedAt === null) {
-      return;
+    const rows = readTurnMessages ? yield* readTurnMessages(event) : [];
+    type Message = { role: string; content: string; ordinal: number; phase?: string };
+    const input: Message[] = [];
+    const output: Message[] = [];
+    for (const { id, role, content, ordinal, phase, since } of rows) {
+      const key = `message:${id}`;
+      if (traced.has(key)) continue;
+      if (role === "user" && (inputCreatedAt.get(id) ?? "") <= since) continue;
+      inputCreatedAt.delete(id);
+      markTraced(key);
+      (role === "user" ? input : output).push({ role, content, ordinal, ...(phase && { phase }) });
     }
-    if (traced.has(`turn:${turn.id}`) || isStale(turn.completedAt, occurredAt)) return;
-    markTraced(`turn:${turn.id}`);
     complete(
       `chat ${turn.model ?? (runId == null ? undefined : (runs.get(runId) ?? finished.get(runId))?.model) ?? "model"}`,
       runId,
@@ -279,6 +300,15 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
       {
         "sentry.op": "gen_ai.chat",
         "gen_ai.operation.name": "chat",
+        ...conversationAttributes(event.threadId),
+        "gen_ai.input.messages": input.length
+          ? yield* encodeMessages(input).pipe(Effect.orDie)
+          : undefined,
+        "gen_ai.output.messages": output.length
+          ? yield* encodeMessages(output).pipe(Effect.orDie)
+          : undefined,
+        "t3.provider_turn.ordinal": turn.ordinal,
+        "t3.provider_turn.status": turn.status,
         "gen_ai.response.model": turn.model ?? undefined,
         "gen_ai.usage.input_tokens": usage?.inputTokens,
         "gen_ai.usage.input_tokens.cached": usage?.cachedInputTokens,
@@ -291,7 +321,40 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
           : undefined,
       },
     );
-  };
+  });
+
+  const flushTurn = Effect.fnUntraced(function* (open: OpenRun) {
+    const event = open.pendingTurn;
+    if (!event) return;
+    delete open.pendingTurn;
+    yield* emitTurn(event);
+  });
+
+  const onProviderTurn = Effect.fnUntraced(function* (event: TurnEvent) {
+    const turn = event.payload;
+    if (turn.startedAt === null) return;
+    const run = event.runId == null ? undefined : runs.get(event.runId);
+    if (run && run.span.attributes.get("sentry.op") === "fork.run") {
+      run.span.attribute("sentry.op", "gen_ai.invoke_agent");
+      run.span.attribute("gen_ai.operation.name", "invoke_agent");
+      run.span.attribute("gen_ai.agent.name", run.instanceId);
+    }
+    const key = `turn:${turn.id}`;
+    if (traced.has(key)) return;
+    // A root turn can finish before its last message is sealed. The next root turn or run
+    // settlement is the boundary after that provider's final writes; keep only the turn metadata.
+    const defer = readTurnMessages && run && turn.runAttemptId != null;
+    if (defer && run.pendingTurn) yield* flushTurn(run);
+    if (
+      !TERMINAL_ITEM.has(turn.status) ||
+      turn.completedAt === null ||
+      isStale(turn.completedAt, event.occurredAt)
+    )
+      return;
+    markTraced(key);
+    if (defer) run.pendingTurn = event;
+    else yield* emitTurn(event);
+  });
 
   const onTurnItem = (item: OrchestrationV2TurnItem, occurredAt: DateTime.Utc) => {
     if (!TERMINAL_ITEM.has(item.status) || item.startedAt === null || item.completedAt === null) {
@@ -333,6 +396,15 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
     const name = toolName(item);
     if (name === undefined) return;
     markTraced(`item:${item.id}`);
+    if (item.providerTurnId == null) {
+      const op = `fork.${item.type}`;
+      complete(op, item.runId, item.startedAt, item.completedAt, failed, {
+        "sentry.op": op,
+        ...conversationAttributes(item.threadId),
+        "t3.run.id": item.runId ?? undefined,
+      });
+      return;
+    }
     complete(`execute_tool ${name}`, item.runId, item.startedAt, item.completedAt, failed, {
       "sentry.op": "gen_ai.execute_tool",
       "gen_ai.operation.name": "execute_tool",
@@ -379,7 +451,7 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
     });
   };
 
-  const onEvent = ({ event }: OrchestrationV2StoredEvent) => {
+  const onEvent = Effect.fnUntraced(function* ({ event, commandId }: OrchestrationV2StoredEvent) {
     now = Math.max(now, DateTime.toEpochMillis(event.occurredAt));
     switch (event.type) {
       case "context-transfer.created": {
@@ -397,69 +469,35 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
         if (privateMetadata)
           remember(drivers, event.payload.providerInstanceId, event.payload.driver);
         return;
-      case "message.updated":
+      case "message.updated": {
+        const message = event.payload;
+        if (readTurnMessages && message.role === "user" && !inputCreatedAt.has(message.id)) {
+          // On restart a recovered unread steer can be the first update we see for an old prompt.
+          const requeued =
+            commandId?.startsWith("command:unread-steer:") ||
+            commandId?.startsWith("command:steer-follow-up:");
+          remember(
+            inputCreatedAt,
+            message.id,
+            requeued ? "" : DateTime.formatIso(message.createdAt),
+            MAX_TRACED,
+          );
+        }
         return;
+      }
       case "provider-turn.updated":
-        return onProviderTurn(event.payload, event.runId, event.occurredAt);
+        return yield* onProviderTurn(event);
       case "turn-item.updated":
         return onTurnItem(event.payload, event.occurredAt);
       case "runtime-request.updated":
         return onRuntimeRequest(event);
       default:
         if (event.type.startsWith("run.") && "modelSelection" in event.payload) {
-          return onRun(event.payload as OrchestrationV2Run, event.occurredAt);
+          return yield* onRun(event.payload as OrchestrationV2Run, event.occurredAt);
         }
     }
-  };
+  });
 
-  const captureMessage = (
-    message: OrchestrationV2ConversationMessage,
-    consent: OrchestrationV2AppThread["sentryTextConsent"],
-  ) => {
-    if (
-      consent?.threadId !== message.threadId ||
-      message.runId === null ||
-      !(DateTime.toEpochMillis(message.createdAt) > Date.parse(consent.since)) ||
-      message.streaming ||
-      !message.text ||
-      message.notification ||
-      message.threadId === `fork:dream:${message.id}` ||
-      message.scheduledTaskId ||
-      message.senderThreadId ||
-      message.linkedSender ||
-      message.workflowScript ||
-      message.idleCompaction ||
-      message.delegatedCompletion ||
-      traced.has(`message:${message.id}`)
-    )
-      return;
-    const user =
-      message.role === "user" &&
-      message.createdBy === "user" &&
-      (message.creationSource === "web" || message.creationSource === "mobile");
-    const assistant =
-      message.role === "assistant" &&
-      message.createdBy === "agent" &&
-      message.creationSource === "provider";
-    if (!user && !assistant) return;
-    markTraced(`message:${message.id}`);
-    complete(
-      `fork.message ${message.role}`,
-      message.runId,
-      message.createdAt,
-      message.updatedAt,
-      false,
-      {
-        ...conversationAttributes(message.threadId),
-        "t3.run.id": message.runId,
-        "sentry.op": "gen_ai.message",
-        [user ? "gen_ai.input.messages" : "gen_ai.output.messages"]: JSON.stringify([
-          { role: message.role, content: message.text },
-        ]),
-      },
-      user ? origins.get(message.id) : undefined,
-    );
-  };
   const dreamResult = (
     run: OrchestrationV2Run,
     items: readonly OrchestrationV2TurnItem[],
@@ -492,7 +530,7 @@ export const make = Effect.fnUntraced(function* (environmentId: string) {
   };
   const needsDreamResult = (run: OrchestrationV2Run) =>
     privateMetadata && !traced.has(`dream-result:${run.id}`);
-  return { onEvent, captureMessage, dreamResult, needsDreamResult };
+  return { onEvent, dreamResult, needsDreamResult };
 });
 
 export const layer = Layer.effectDiscard(
@@ -507,55 +545,45 @@ export const layer = Layer.effectDiscard(
     const identity = yield* ServerEnvironment.ServerEnvironmentIdentity.use(
       (service) => service.getEnvironmentId,
     ).pipe(Effect.provide(ServerEnvironment.layerIdentity));
-    const tracing = yield* make(identity);
-    const onStored = (stored: OrchestrationV2StoredEvent) =>
-      Effect.suspend(() => {
+    const readMessages = config.forkSentry.sampleTraces
+      ? yield* ForkTurnMessages.make(recordingSince)
+      : undefined;
+    const tracing = yield* make(identity, readMessages);
+    // The subscriber sees streaming updates; tracing each one would amplify the traffic it observes.
+    const onStored = Effect.fnUntraced(
+      function* (stored: OrchestrationV2StoredEvent) {
         last = stored.sequence;
-        try {
-          tracing.onEvent(stored);
-          const event = stored.event;
-          if (
-            config.forkSentry?.sampleTraces &&
-            (event.type === "run.updated" || event.type === "run.created") &&
-            event.threadId === `fork:dream:${event.payload.userMessageId}` &&
-            tracing.needsDreamResult(event.payload) &&
-            TERMINAL_RUN.has(event.payload.status) &&
-            event.payload.completedAt !== null &&
-            !isStale(event.payload.completedAt, event.occurredAt)
-          ) {
-            const run = event.payload;
-            return projection
-              .getThreadRecords(run.threadId, ["turnItems", "plans"], {
-                turnItemRunId: run.id,
-                turnItemTypes: ["assistant_message"],
-                turnItemStatuses: ["completed"],
-              })
-              .pipe(
-                Effect.map(({ turnItems, plans }) => tracing.dreamResult(run, turnItems, plans)),
-                Effect.ignore,
-              );
-          }
-          if (
-            config.forkSentry?.sampleTraces &&
-            event.type === "message.updated" &&
-            DateTime.isGreaterThan(event.payload.createdAt, recordingSince) &&
-            !event.payload.streaming &&
-            !isStale(event.payload.updatedAt, event.occurredAt)
-          ) {
-            const message = event.payload;
-            return projection.findThread(message.threadId).pipe(
-              Effect.map((thread) => tracing.captureMessage(message, thread?.sentryTextConsent)),
+        yield* tracing.onEvent(stored);
+        const event = stored.event;
+        if (
+          config.forkSentry?.sampleTraces &&
+          (event.type === "run.updated" || event.type === "run.created") &&
+          event.threadId === `fork:dream:${event.payload.userMessageId}` &&
+          tracing.needsDreamResult(event.payload) &&
+          TERMINAL_RUN.has(event.payload.status) &&
+          event.payload.completedAt !== null &&
+          !isStale(event.payload.completedAt, event.occurredAt)
+        ) {
+          const run = event.payload;
+          return yield* projection
+            .getThreadRecords(run.threadId, ["turnItems", "plans"], {
+              turnItemRunId: run.id,
+              turnItemTypes: ["assistant_message"],
+              turnItemStatuses: ["completed"],
+            })
+            .pipe(
+              Effect.map(({ turnItems, plans }) => tracing.dreamResult(run, turnItems, plans)),
               Effect.ignore,
             );
-          }
-          return Effect.void;
-        } catch (defect) {
-          return Effect.logWarning("Fork agent tracing skipped an event", {
-            type: stored.event.type,
-            defect: String(defect),
-          });
         }
-      });
+      },
+      (effect, stored) =>
+        effect.pipe(
+          Effect.catchDefect(() =>
+            Effect.logWarning("Fork agent tracing skipped an event", { type: stored.event.type }),
+          ),
+        ),
+    );
     // Tracing must never stop orchestration; after a failure it resubscribes where it left off.
     yield* Stream.suspend(() => sink.stream({ afterSequence: last })).pipe(
       Stream.runForEach(onStored),
