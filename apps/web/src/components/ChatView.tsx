@@ -3629,6 +3629,21 @@ export default function ChatView(props: ChatViewProps) {
           </header>
         )}
 
+        {sourceDream?.startsWith("fork:dream:") ? (
+          <ForkDreamSourceReturn
+            thread={{ environmentId, threadId: ThreadId.make(sourceDream) }}
+            unavailable={citationHistory._tag === "failed"}
+          />
+        ) : isServerThread &&
+          activeThreadRef &&
+          serverConfig?.environment.capabilities.forkDreamReviews === true ? (
+          threadId.startsWith("fork:dream:") ? (
+            <ForkDreamReview key={activeThreadKey} thread={activeThreadRef} />
+          ) : (
+            <ForkDreamResults thread={activeThreadRef} />
+          )
+        ) : null}
+
         <div className="relative flex min-h-0 min-w-0 flex-1">
           <ThreadFindCanvas
             findOptions={{
@@ -3650,20 +3665,6 @@ export default function ChatView(props: ChatViewProps) {
           >
             <ThreadFind onClose={focusComposerStable} />
             {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
-            {sourceDream?.startsWith("fork:dream:") ? (
-              <ForkDreamSourceReturn
-                thread={{ environmentId, threadId: ThreadId.make(sourceDream) }}
-                unavailable={citationHistory._tag === "failed"}
-              />
-            ) : isServerThread &&
-              activeThreadRef &&
-              serverConfig?.environment.capabilities.forkDreamReviews === true ? (
-              threadId.startsWith("fork:dream:") ? (
-                <ForkDreamReview key={activeThreadKey} thread={activeThreadRef} />
-              ) : (
-                <ForkDreamResults thread={activeThreadRef} />
-              )
-            ) : null}
             <ChatBannerLane
               environmentId={activeThread.environmentId}
               providerStatus={visibleProviderStatus}

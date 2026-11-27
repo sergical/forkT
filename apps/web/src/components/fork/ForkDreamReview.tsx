@@ -72,7 +72,6 @@ export function ForkDreamSourceReturn({
 }
 
 export function ForkDreamResults({ thread }: { thread: ScopedThreadRef }) {
-  const gt = useGT();
   const m = useMessages();
   const canRead = useAtomValue(forkMemory.dreamResults.permissionAtom(thread.environmentId));
   const { data } = useEnvironmentQuery(
@@ -95,8 +94,6 @@ export function ForkDreamResults({ thread }: { thread: ScopedThreadRef }) {
             params={{ environmentId: thread.environmentId, threadId: result.threadId }}
             hash="dream-review"
             hashScrollIntoView={false}
-            aria-label={gt("Open Dream review")}
-            aria-description={dreamResultLabel(result, m)}
           >
             {dreamResultLabel(result, m)} <ArrowUpRightIcon aria-hidden className="size-3.5" />
           </Link>
