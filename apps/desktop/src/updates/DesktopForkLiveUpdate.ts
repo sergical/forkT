@@ -9,11 +9,13 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-i18n";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import { m } from "../i18n/messages.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import {
@@ -96,7 +98,7 @@ export const installDesktopForkLiveUpdate = Effect.fn("desktop.forkLiveUpdate.in
           ),
         ),
       );
-      if (failure) yield* dialog.showErrorBox("T3 fork could not restart", failure);
+      if (failure) yield* dialog.showErrorBox(m(msg("forkT could not restart")), failure);
     }
 
     yield* ipc.handle(

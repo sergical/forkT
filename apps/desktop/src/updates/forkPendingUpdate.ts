@@ -28,16 +28,15 @@ export function resolveForkPendingUpdatePaths(
   env: Readonly<NodeJS.ProcessEnv>,
 ): ForkPendingUpdatePaths | null {
   if (environment.platform !== "darwin") return null;
-  const defaultAppPath = "/Applications/T3 fork.app";
-  const appPath = env.T3_FORK_SYNC_APP_PATH ?? defaultAppPath;
+  const runningAppPath = NodePath.resolve(environment.resourcesPath, "../..");
+  const appPath = env.T3_FORK_SYNC_APP_PATH ?? runningAppPath;
+  const production =
+    appPath === "/Applications/forkT.app" || appPath === "/Applications/T3 fork.app";
   const scratchState = env.T3_FORK_SYNC_STATE_DIR;
   if (!NodePath.isAbsolute(appPath) || !appPath.endsWith(".app")) return null;
-  if (environment.isPackaged) {
-    if (NodePath.resolve(environment.resourcesPath, "../..") !== appPath) return null;
-    if (appPath !== defaultAppPath && !scratchState) return null;
-  } else if (!scratchState || appPath === defaultAppPath) {
-    return null;
-  }
+  if (environment.isPackaged && runningAppPath !== appPath) return null;
+  if (production && !environment.isPackaged) return null;
+  if (!production && (!env.T3_FORK_SYNC_APP_PATH || !scratchState)) return null;
   const home = environment.homeDirectory;
   return {
     stateDir: scratchState ?? NodePath.join(home, ".t3-fork-lab", "sync"),

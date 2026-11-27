@@ -226,6 +226,7 @@ vi.mock("./PortalCaptureShortcut.ts", async (original) => ({
   },
 }));
 vi.mock("node:child_process", () => ({
+  execFile: vi.fn(),
   spawn: (_command: string, args: ReadonlyArray<string>) => {
     const stderrListeners: Array<(chunk: Buffer) => void> = [];
     const onceListeners = new Map<string, Array<(value?: unknown) => void>>();
@@ -1786,7 +1787,7 @@ it.effect("flags revoked macOS permissions on read and re-registers once they re
       const revoked = yield* service.state;
       assert.equal(
         revoked.message,
-        "Allow Screen Recording in System Settings, then restart T3 Code.",
+        "Allow Screen Recording in System Settings, then restart forkT.",
       );
       assert.deepEqual(revoked.macPermissions, { screenRecording: false, accessibility: true });
 
@@ -1799,7 +1800,7 @@ it.effect("flags revoked macOS permissions on read and re-registers once they re
       const blocked = yield* service.state;
       assert.equal(
         blocked.message,
-        "Allow Screen Recording in System Settings, then restart T3 Code.",
+        "Allow Screen Recording in System Settings, then restart forkT.",
       );
       assert.isFalse(blocked.shortcutRegistered);
 
