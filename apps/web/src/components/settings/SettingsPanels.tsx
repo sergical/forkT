@@ -3,6 +3,7 @@ import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { m as resolveMessage } from "~/i18n/messages";
 import { useAtomValue } from "@effect/atom-react";
 import { NotificationSettings } from "./NotificationSettings";
+import { FORK_REPOSITORY_URL } from "../../branding.logic";
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
 import { CheckIcon } from "lucide-react";
 import { msg, T, useGT, useMessages } from "gt-react";
@@ -2538,6 +2539,19 @@ export function AboutSettingsPanel() {
   return (
     <SettingsPageContainer>
       <SettingsSection id="about" title={gt("App")}>
+        <SettingsRow
+          {...setting("fork-repository")}
+          description={gt("An independent fork of T3 Code.")}
+          control={
+            <Button
+              size="sm"
+              variant="outline"
+              render={<a href={FORK_REPOSITORY_URL} target="_blank" rel="noreferrer noopener" />}
+            >
+              GitHub
+            </Button>
+          }
+        />
         {primaryPolicy ? (
           <SettingsRow
             title={gt("Organization")}
@@ -2590,8 +2604,8 @@ export function AboutSettingsPanel() {
           {...setting("privacy-policy")}
           description={
             telemetryOff === undefined
-              ? gt("How we handle your data, including the anonymous usage data T3 Code collects.")
-              : gt("How we handle your data. {telemetryOff}", { telemetryOff })
+              ? gt("Read the T3 Code privacy policy for upstream services.")
+              : gt("T3 Code privacy policy for upstream services. {telemetryOff}", { telemetryOff })
           }
           control={
             <Button
@@ -2605,7 +2619,7 @@ export function AboutSettingsPanel() {
         />
         <SettingsRow
           {...setting("open-source-licenses")}
-          description={gt("Notices for dependencies, assets, and optional tools used by T3 Code.")}
+          description={gt("Notices for dependencies, assets, and optional tools used by forkT.")}
           control={
             <Button
               render={<Link to="/settings/open-source-licenses" />}

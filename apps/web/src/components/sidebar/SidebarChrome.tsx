@@ -1,3 +1,4 @@
+import { APP_BASE_NAME } from "~/branding";
 import {
   BookMarkedIcon,
   ArrowLeftIcon,
@@ -192,14 +193,14 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
 function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5 text-sm font-medium tracking-tight">
-      <img src="/fork-mark.svg" alt="forkT" className="size-5 shrink-0" />
+      <img src="/fork-mark.svg" alt="" className="size-5 shrink-0" />
       <span
         className={cn(
           "truncate [text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both_cap_alphabetic]:py-1",
           onBackdrop ? "text-white/70" : "text-muted-foreground",
         )}
       >
-        {"forkT"}
+        {APP_BASE_NAME}
       </span>
     </span>
   );

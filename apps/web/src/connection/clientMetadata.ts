@@ -1,3 +1,4 @@
+import { APP_BASE_NAME } from "~/branding";
 import type {
   AuthClientMetadataDeviceType,
   AuthClientPresentationMetadata,
@@ -78,7 +79,7 @@ export function clientPresentationMetadata(input: {
   if (input.desktopBridge !== undefined) {
     return {
       // oxlint-disable-next-line t3code/no-untranslated-copy -- client label stored on the server
-      label: "T3 Code Desktop",
+      label: `${APP_BASE_NAME} Desktop`,
       deviceType: "desktop",
       os: clientOsFromElectronPlatform(input.desktopBridge.getClientPlatform()),
       surface: "desktop",
@@ -88,7 +89,7 @@ export function clientPresentationMetadata(input: {
 
   return {
     // oxlint-disable-next-line t3code/no-untranslated-copy -- client label stored on the server
-    label: "T3 Code Web",
+    label: `${APP_BASE_NAME} Web`,
     deviceType: browserDeviceType(input.identity),
     os: browserClientOs(input.identity),
     surface: "web",

@@ -27,12 +27,20 @@ const failure = () => new ForkCoordinatorError({ message: "Could not access the 
 const scopeOf = (input: Pick<ForkCoordinatorOpenInput, "projectId" | "global">) =>
   input.global ? "global" : `project:${input.projectId}`;
 
+export function defaultCoordinatorTitle(global: boolean) {
+  return global ? "forkT · Main coordinator" : "forkT · Project coordinator";
+}
+
 export class ForkCoordinatorStore extends Context.Service<
   ForkCoordinatorStore,
   {
     readonly get: (
       input: Pick<ForkCoordinatorOpenInput, "projectId" | "global">,
     ) => Effect.Effect<CoordinatorRecord | null, ForkCoordinatorError>;
+    readonly listLegacyDefaultTitles: Effect.Effect<
+      ReadonlyArray<{ readonly threadId: ThreadId; readonly scope: string }>,
+      ForkCoordinatorError
+    >;
     readonly forThread: (
       threadId: ThreadId,
     ) => Effect.Effect<CoordinatorRecord | null, ForkCoordinatorError>;
@@ -115,6 +123,14 @@ export const layer = Layer.effect(
         }),
       );
     }, Effect.mapError(failure));
-    return ForkCoordinatorStore.of({ get, forThread, claim });
+    // Start with the coordinator registry so opening a workspace never scans all its threads.
+    const listLegacyDefaultTitles = sql<{ readonly threadId: ThreadId; readonly scope: string }>`
+      SELECT c.thread_id AS threadId, c.scope
+      FROM fork_coordinators c CROSS JOIN orchestration_v2_projection_threads t ON t.thread_id = c.thread_id
+      WHERE t.deleted_at IS NULL AND t.title = CASE WHEN c.scope = 'global'
+        THEN 'T3 fork · Main coordinator' ELSE 'T3 fork · Project coordinator' END
+        AND coalesce(json_extract(t.payload_json, '$.titleRenamed'), 0) = 0
+    `.pipe(Effect.mapError(failure));
+    return ForkCoordinatorStore.of({ get, forThread, claim, listLegacyDefaultTitles });
   }),
 );

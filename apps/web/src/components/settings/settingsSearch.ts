@@ -1,4 +1,4 @@
-import { HOSTED_APP_CHANNEL } from "~/branding";
+import { APP_BASE_NAME, HOSTED_APP_CHANNEL } from "~/branding";
 import { isElectron } from "~/env";
 import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/utils";
 import { STATIC_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";
@@ -999,6 +999,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     desktopOnly: true,
   },
   {
+    id: "fork-repository",
+    title: APP_BASE_NAME,
+    to: "/settings/about",
+    searchTerms: ["GitHub", "sergical/forkT"],
+  },
+  {
     id: "mobile-app",
     title: msg("Mobile app"),
     to: "/settings/about",
@@ -1238,7 +1244,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "pull-request-links-open-in-app",
-    title: msg("Open pull requests in T3 Code"),
+    title: msg("Open pull requests in forkT"),
     to: "/settings/diffs",
     searchTerms: [
       `pr commit links ${SOURCE_CONTROL_HOST_LABELS} browser external click default pull request view panel`,

@@ -30,6 +30,7 @@ import * as ProjectService from "./project/ProjectService.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { ServerActivation } from "./serverActivation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
+import * as ForkCoordinatorStore from "./project/ForkCoordinatorStore.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
@@ -113,6 +114,9 @@ it.effect("parks automatic pull until activation without delaying command readin
         recover: Effect.succeed(recovery),
         prepareForShutdown: Effect.void,
         reconcile: () => Effect.succeed(recovery),
+      }),
+      Layer.mock(ForkCoordinatorStore.ForkCoordinatorStore)({
+        listLegacyDefaultTitles: Effect.succeed([]),
       }),
       Layer.mock(Orchestrator.OrchestratorV2)({ recoverDelegatedTasks: Effect.void }),
       Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({ shutdown: Effect.void }),

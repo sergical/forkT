@@ -1,3 +1,4 @@
+import { APP_BASE_NAME } from "~/branding";
 import { managedCapabilityDenial } from "@t3tools/client-runtime/contract-labels";
 import { DeviceHostUpdates } from "../device/DeviceHostUpdates";
 import { DeviceToolVersions } from "../device/DeviceToolVersions";
@@ -699,7 +700,7 @@ function BrowserRecordingFrameRateSetting({ disabled }: { readonly disabled: boo
 
 const LINK_TARGET_LABELS: Readonly<Record<BrowserLinkTarget, string>> = {
   system: msg("Your default browser"),
-  app: "T3 Code",
+  app: APP_BASE_NAME,
 };
 
 function BrowserLinkTargetSetting({ disabled }: { readonly disabled: boolean }) {
@@ -850,12 +851,12 @@ export function PullRequestLinksOpenInAppSetting() {
     <SettingsRow
       {...searchableSetting("pull-request-links-open-in-app")}
       description={gt(
-        "Clicking a pull request link opens it in T3 Code. Turn off to open pull request links like any other link, on your git host.",
+        "Clicking a pull request link opens it in forkT. Turn off to open pull request links like any other link, on your git host.",
       )}
       resetAction={
         openInApp ? null : (
           <SettingResetButton
-            ariaLabel={gt("Reset open pull requests in T3 Code to default")}
+            ariaLabel={gt("Reset open pull requests in forkT to default")}
             onClick={() => updateSettings({ pullRequestLinksOpenInApp: true })}
           />
         )
@@ -866,7 +867,7 @@ export function PullRequestLinksOpenInAppSetting() {
           onCheckedChange={(checked) =>
             updateSettings({ pullRequestLinksOpenInApp: Boolean(checked) })
           }
-          aria-label={gt("Open pull requests in T3 Code")}
+          aria-label={gt("Open pull requests in forkT")}
         />
       }
     />

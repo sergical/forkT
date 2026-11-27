@@ -178,7 +178,7 @@ export function SnapShotSetupDialog({
                       ? gt("Update the capture helper")
                       : gt("Allow snapshots"),
                   description: gt(
-                    "T3 Code's capture helper lets you capture other apps and return to your draft. It's included with T3 Code.",
+                    "T3 Code's capture helper lets you capture other apps and return to your draft. It's included with forkT.",
                   ),
                 }
           : backend === "niri"
@@ -370,7 +370,7 @@ export function SnapShotSetupDialog({
                   ))}
                   {step === "access" && (backend === "gnome" || helperBackend) ? (
                     <p>
-                      <T>Included with T3 Code. No download needed.</T>
+                      <T>Included with forkT. No download needed.</T>
                     </p>
                   ) : null}
                   {step === "access" && backend === "gnome" && extension?.status === "enabled" ? (

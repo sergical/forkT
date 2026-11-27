@@ -46,6 +46,7 @@ import {
   usePrimaryEnvironmentId,
 } from "~/state/environments";
 import { useManagedPolicy } from "~/state/managedPolicy";
+import { APP_BASE_NAME } from "~/branding";
 import { mintMcpApprovalCodeOn } from "~/state/peerPairingCode";
 import { peerLinkEnvironment } from "~/state/peerLinks";
 import { useEnvironmentQuery } from "~/state/query";
@@ -86,7 +87,7 @@ export function UseInAnotherAppDialogHost() {
 function UseInAnotherAppDialog({ requested }: { readonly requested: EnvironmentId | null }) {
   const { environment, label } = useAccessEnvironment(requested);
   const gt = useGT();
-  const title = `${gt("Use T3 Code in another app (MCP)")} · ${label ?? "T3 Code"}`;
+  const title = `${gt("Use forkT in another app (MCP)")} · ${label ?? APP_BASE_NAME}`;
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : close())}>
       <WizardPopup>

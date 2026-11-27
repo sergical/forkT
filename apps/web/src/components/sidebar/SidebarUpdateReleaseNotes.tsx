@@ -163,7 +163,7 @@ export function SidebarUpdateReleaseNotes({
             </section>
           );
         })}
-        {state.omittedReleaseCount > 0 ? (
+        {state.omittedReleaseCount > 0 && getDesktopUpdateReleaseUrl(state.availableVersion) ? (
           <div className="mt-3">
             <ReleaseLink releaseUrl={getDesktopUpdateReleaseHistoryUrl()} shell={shell}>
               {gt(

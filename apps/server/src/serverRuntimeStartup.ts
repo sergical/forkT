@@ -38,6 +38,7 @@ import * as ProviderRuntimeRecovery from "./orchestration-v2/ProviderRuntimeReco
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadLaunch from "./orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagement from "./orchestration-v2/ThreadManagementService.ts";
+import * as ForkCoordinatorStore from "./project/ForkCoordinatorStore.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
@@ -456,6 +457,7 @@ const make = Effect.fn("serverRuntimeStartup.make")(function* (options?: Startup
   const legacyV1ThreadImporter = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
   const providerRuntimeRecovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService;
   const orchestrator = yield* Orchestrator.OrchestratorV2;
+  const coordinators = yield* ForkCoordinatorStore.ForkCoordinatorStore;
   const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
   const agentAwarenessRelay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
   const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
@@ -539,6 +541,15 @@ const make = Effect.fn("serverRuntimeStartup.make")(function* (options?: Startup
           status: "running",
           totalThreadCount: legacyMigrationThreadCount,
         },
+      });
+    }
+    // Publish ordinary rename events before clients resume their cached thread lists.
+    for (const { threadId, scope } of yield* coordinators.listLegacyDefaultTitles) {
+      yield* orchestrator.dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make(`forkt-default-title:${threadId}`),
+        threadId,
+        title: ForkCoordinatorStore.defaultCoordinatorTitle(scope === "global"),
       });
     }
     const { recovery, bootstrap: bootstrapTargets } = yield* runOrderedV2StartupPhases({
