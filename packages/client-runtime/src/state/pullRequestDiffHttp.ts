@@ -1,3 +1,4 @@
+import { clientProductName } from "@t3tools/shared/clientProductName";
 import { msg } from "gt-i18n";
 import { type MarkedText, markedTextEnglish } from "../errors/translatable.ts";
 import {
@@ -36,7 +37,8 @@ export class PullRequestDiffCredentialRejectedError extends Schema.TaggedError<P
   get i18nMessage(): MarkedText {
     return [
       msg(
-        "This environment session is no longer valid (invalid_credential). Refresh the page or quit and reopen T3 Code.",
+        "This environment session is no longer valid (invalid_credential). Refresh the page or quit and reopen {appName}.",
+        { appName: clientProductName },
       ),
     ];
   }

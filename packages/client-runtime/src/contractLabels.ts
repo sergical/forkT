@@ -2,6 +2,7 @@
  * Translatable copies of the English labels in `@t3tools/contracts` helpers. Same ids, same
  * English; apps call these instead of the contracts helpers so the text follows the UI language.
  */
+import { clientProductName } from "@t3tools/shared/clientProductName";
 import {
   type BrowserImportFailureReason,
   isRuntimeModeAbove,
@@ -70,7 +71,9 @@ export function managedUpdatesMessage(
   organization: string,
   resolve: MFunctionType = mFallback,
 ): string {
-  return resolve(msg("{organization} manages T3 Code updates.", { organization }));
+  return resolve(
+    msg("{organization} manages {appName} updates.", { appName: clientProductName, organization }),
+  );
 }
 
 /** @public */
@@ -79,7 +82,8 @@ export function managedNightlyDeniedMessage(
   resolve: MFunctionType = mFallback,
 ): string {
   return resolve(
-    msg("{organization} manages T3 Code updates. Only stable releases can be installed.", {
+    msg("{organization} manages {appName} updates. Only stable releases can be installed.", {
+      appName: clientProductName,
       organization,
     }),
   );
@@ -207,7 +211,8 @@ const BROWSER_IMPORT_FAILURE_MESSAGES: Record<BrowserImportFailureReason, string
     "No encryption key in your Keychain. Sign in to that browser once, then retry.",
   ),
   needsFullDiskAccess: msg(
-    "Give T3 Code Full Disk Access in System Settings → Privacy & Security, then retry.",
+    "Give {appName} Full Disk Access in System Settings → Privacy & Security, then retry.",
+    { appName: clientProductName },
   ),
   browserRunning: msg("Quit the browser first so its cookie database can be read."),
   unsupportedPlatform: msg("Importing from this browser isn't possible on this platform."),

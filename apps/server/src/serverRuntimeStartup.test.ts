@@ -25,6 +25,7 @@ import * as Path from "effect/Path";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 
 import * as ServerConfig from "./config.ts";
+import * as ForkCoordinatorStore from "./project/ForkCoordinatorStore.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
@@ -114,6 +115,9 @@ it.effect.each([
         recover: Effect.succeed(recovery),
         prepareForShutdown: Effect.void,
         reconcile: () => Effect.succeed(recovery),
+      }),
+      Layer.mock(ForkCoordinatorStore.ForkCoordinatorStore)({
+        listLegacyDefaultTitles: Effect.succeed([]),
       }),
       Layer.mock(Orchestrator.OrchestratorV2)({ recoverDelegatedTasks: Effect.void }),
       Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({ shutdown: Effect.void }),

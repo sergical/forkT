@@ -1,3 +1,7 @@
+export const FORK_PRODUCT_NAME = "forkT";
+export const FORK_REPOSITORY = "sergical/forkT";
+export const FORK_REPOSITORY_URL = `https://github.com/${FORK_REPOSITORY}`;
+
 const NIGHTLY_SERVER_VERSION_PATTERN = /^[^-+]+-(?:nightly|preview)\.\d{8}\.\d+$/;
 
 export function formatAppDisplayName(input: {

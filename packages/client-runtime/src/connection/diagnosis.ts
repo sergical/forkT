@@ -1,3 +1,4 @@
+import { clientProductName } from "@t3tools/shared/clientProductName";
 import {
   t3ConnectTroubleshootingUrl,
   type T3ConnectTroubleshootingSection,
@@ -173,11 +174,23 @@ function steps(
   );
   switch (located.cause) {
     case "offline":
-      return [resolve(msg("Connect this device to the internet. T3 Code reconnects on its own."))];
+      return [
+        resolve(
+          msg("Connect this device to the internet. {appName} reconnects on its own.", {
+            appName: clientProductName,
+          }),
+        ),
+      ];
     case "session_pending":
       return [
-        resolve(msg("Wait a moment. T3 Code retries on its own.")),
-        resolve(msg("If it keeps waiting, reload or restart T3 Code on this device.")),
+        resolve(
+          msg("Wait a moment. {appName} retries on its own.", { appName: clientProductName }),
+        ),
+        resolve(
+          msg("If it keeps waiting, reload or restart {appName} on this device.", {
+            appName: clientProductName,
+          }),
+        ),
       ];
     case "approval_pending": {
       const code =
@@ -224,10 +237,17 @@ function steps(
         ),
       ];
     case "tunnel_pending":
-      return [resolve(msg("Wait a minute. T3 Code retries on its own.")), checkHost];
+      return [
+        resolve(
+          msg("Wait a minute. {appName} retries on its own.", { appName: clientProductName }),
+        ),
+        checkHost,
+      ];
     case "relay_error":
       return [
-        resolve(msg("Wait a few minutes. T3 Code retries on its own.")),
+        resolve(
+          msg("Wait a few minutes. {appName} retries on its own.", { appName: clientProductName }),
+        ),
         resolve(msg("If it keeps failing, copy the diagnostics and report it.")),
       ];
     case "tunnel_not_enabled":
@@ -264,7 +284,7 @@ function steps(
   switch (located.hop) {
     case "device":
       return [
-        resolve(msg("Restart T3 Code on this device.")),
+        resolve(msg("Restart {appName} on this device.", { appName: clientProductName })),
         resolve(
           msg("If it keeps failing, remove {host} from this device and add it again.", { host }),
         ),

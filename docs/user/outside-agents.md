@@ -64,12 +64,12 @@ Either page names the agent and where its access goes:
   Anyone who runs that service gets the access.
 
 Only approve a sign-in you just started. On the environment's own page, enter a
-code from **Use T3 Code in another app (MCP)**, **Settings → Sharing & access**,
+code from **Use forkT in another app (MCP)**, **Settings → Sharing & access**,
 or `t3 auth pairing create` on the host. A browser already signed in to the
 environment with permission to manage access can approve without a code. On the
 web app, **Use a sign-in code instead** opens the environment's own page.
 
-A code from **Use T3 Code in another app (MCP)** already carries the level you
+A code from **Use forkT in another app (MCP)** already carries the level you
 picked there. With another code, choose what the agent may do here: **Auto** is
 selected by default, or the closest lower mode allowed by your organization’s
 policy. Approving without a code starts at **Read only**:

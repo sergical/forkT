@@ -1,3 +1,4 @@
+import { clientProductName } from "./clientProductName.ts";
 import { mFallback, msg } from "gt-i18n";
 import type { MFunctionType } from "gt-i18n/types";
 
@@ -15,22 +16,30 @@ function promptLinkErrorMessage(error: PromptLinkError, resolve: MFunctionType):
   switch (error) {
     case "prompt-too-long":
       return resolve(
-        msg("This prompt is longer than {maxLength} characters, so T3 Code did not open it.", {
+        msg("This prompt is longer than {maxLength} characters, so {appName} did not open it.", {
+          appName: clientProductName,
           maxLength: PROMPT_LINK_MAX_PROMPT_LENGTH.toLocaleString("en-US"),
         }),
       );
     case "prompt-only-hidden":
       return resolve(
         msg(
-          "This prompt had only hidden characters, so it may be malicious. T3 Code did not open it.",
+          "This prompt had only hidden characters, so it may be malicious. {appName} did not open it.",
+          { appName: clientProductName },
         ),
       );
     case "unreadable-pull-request":
-      return resolve(msg("This link names a pull request T3 Code cannot read."));
+      return resolve(
+        msg("This link names a pull request {appName} cannot read.", {
+          appName: clientProductName,
+        }),
+      );
     case "missing-prompt":
       return resolve(msg("This link has no prompt."));
     case "unreadable-repository":
-      return resolve(msg("This link names a repository T3 Code cannot read."));
+      return resolve(
+        msg("This link names a repository {appName} cannot read.", { appName: clientProductName }),
+      );
   }
 }
 

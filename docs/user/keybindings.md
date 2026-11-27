@@ -139,7 +139,7 @@ the keyboard. `isWeb` is true in a browser tab. `isDesktop` is true in the
 desktop app. Unknown keys evaluate to `false`.
 
 `mod+1` through `mod+9` jump to the first nine threads, and to models while the
-model picker is open. In T3 fork, the main coordinator takes the first slot after
+model picker is open. In forkT, the main coordinator takes the first slot after
 it has been opened. The other numbered shortcuts follow the sidebar’s thread and draft order.
 Those defaults use `isDesktop` so they do not steal the
 browser's tab-switch shortcuts. Remove that condition in Settings if you want

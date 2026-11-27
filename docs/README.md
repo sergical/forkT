@@ -1,4 +1,6 @@
-# T3 Code docs
+# forkT documentation
+
+Start with [the forkT workspace](./user/t3-fork.md) for coordinators, Inbox, and Memories. The following guides document the upstream T3 Code features that forkT builds on.
 
 ## Using T3 Code
 

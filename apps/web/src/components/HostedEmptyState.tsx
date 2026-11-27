@@ -2,11 +2,12 @@ import { Link } from "@tanstack/react-router";
 import { T } from "gt-react";
 import type { ReactNode } from "react";
 
-import { APP_DISPLAY_NAME, DESKTOP_DOWNLOAD_URL } from "~/branding";
+import { APP_DISPLAY_NAME } from "~/branding";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { isElectron } from "../env";
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
-import { InstallT3Commands } from "./InstallT3Commands";
+import { FORK_REPOSITORY_URL } from "~/branding.logic";
+import { CommandBlock } from "./CommandBlock";
 import { Button } from "./ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/empty";
 import { SidebarInset } from "./ui/sidebar";
@@ -39,7 +40,7 @@ export function HostedEmptyState() {
               ) : cloudEnabled ? (
                 <T>Your agents run on your computer.</T>
               ) : (
-                <T>Your agents run on your computer. Start T3 Code there first.</T>
+                <T>Your agents run on your computer. Start forkT there first.</T>
               )}
             </EmptyDescription>
           </EmptyHeader>
@@ -96,14 +97,14 @@ function RunOnComputer({ command }: { readonly command: string }) {
       <p>
         <T>Run on your computer:</T>
       </p>
-      <InstallT3Commands command={command} className="mt-2" />
+      <CommandBlock command={command} />
       <a
         className="mt-2 inline-block text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        href={DESKTOP_DOWNLOAD_URL}
+        href={FORK_REPOSITORY_URL}
         target="_blank"
         rel="noreferrer noopener"
       >
-        <T>Or download the desktop app</T>
+        <T>About forkT on GitHub</T>
       </a>
     </>
   );

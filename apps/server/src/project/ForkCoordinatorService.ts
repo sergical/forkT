@@ -171,7 +171,7 @@ export const layer = Layer.effect(
         commandId: CommandId.make(`open:${claimed.threadId}`),
         threadId: claimed.threadId,
         projectId: claimed.projectId,
-        title: input.global ? "forkT · Main coordinator" : "forkT · Project coordinator",
+        title: ForkCoordinatorStore.defaultCoordinatorTitle(input.global),
         modelSelection: claimed.modelSelection,
         runtimeMode: claimed.runtimeMode,
         interactionMode: "default",

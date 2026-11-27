@@ -53,3 +53,39 @@ it.effect(
       ),
     ),
 );
+
+it.effect("finds only untouched default coordinator titles in an older workspace", () =>
+  Effect.gen(function* () {
+    yield* runMigrations();
+    const store = yield* Store.ForkCoordinatorStore;
+    const sql = yield* SqlClient.SqlClient;
+    const oldTitle = "T3 fork · Project coordinator";
+    const rows = [
+      { id: "main", scope: "global", title: "T3 fork · Main coordinator" },
+      { id: "project", scope: "project:a", title: oldTitle },
+      { id: "custom", scope: "project:b", title: "T3 fork planning", titleRenamed: true },
+      { id: "renamed", scope: "project:c", title: oldTitle, titleRenamed: true },
+      { id: "worker", scope: null, title: oldTitle },
+    ];
+    for (const { id, scope, title, titleRenamed } of rows) {
+      if (scope !== null) {
+        yield* sql`INSERT INTO fork_coordinators VALUES (${scope}, ${id}, 1, ${id}, '{}', 'full-access')`;
+      }
+      yield* sql`
+        INSERT INTO orchestration_v2_projection_threads (
+          thread_id, project_id, title, default_provider, runtime_mode, interaction_mode,
+          created_at, updated_at, payload_json
+        ) VALUES (${id}, ${id}, ${title}, 'codex', 'full-access', 'default',
+          '2026-11-17', '2026-11-17', ${JSON.stringify({ title, titleRenamed })})
+      `;
+    }
+    assert.deepStrictEqual(
+      (yield* store.listLegacyDefaultTitles).map((row) => row.threadId).sort(),
+      ["main", "project"],
+    );
+  }).pipe(
+    Effect.provide(
+      Store.layer.pipe(Layer.provideMerge(NodeSqliteClient.layer({ filename: ":memory:" }))),
+    ),
+  ),
+);

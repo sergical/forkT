@@ -1,3 +1,4 @@
+import { clientProductName } from "@t3tools/shared/clientProductName";
 import type {
   EnvironmentId,
   ScopedThreadRef,
@@ -78,7 +79,8 @@ export function fullAccessOverrideExplanation(
       )
     : resolve(
         msg(
-          "Full access skips approvals, but the agent still stops for a few safety checks of its own that no setting can skip, such as a delete whose path it can't verify. T3 Code can't turn these off, so check the request and approve it if it's what you expect.",
+          "Full access skips approvals, but the agent still stops for a few safety checks of its own that no setting can skip, such as a delete whose path it can't verify. {appName} can't turn these off, so check the request and approve it if it's what you expect.",
+          { appName: clientProductName },
         ),
       );
 }

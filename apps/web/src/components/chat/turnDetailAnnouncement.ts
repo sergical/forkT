@@ -1,3 +1,4 @@
+import { APP_BASE_NAME } from "~/branding";
 import type { RunId, ScreenReaderAnnouncements } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { searchToolLabelParts } from "@t3tools/shared/toolActivity";
@@ -185,9 +186,6 @@ export interface TurnDetailMemory {
   readonly tailId: string | null;
 }
 
-/** The heading every agent message has in the timeline. */
-const MESSAGE_AUTHOR = "T3 Code";
-
 /**
  * Decides which of the turn's messages and steps a screen reader hears next.
  * The first snapshot of a thread is a silent baseline, like its status.
@@ -226,7 +224,7 @@ export function nextTurnDetailAnnouncement(
           : m(msg("{text} More in the thread.", { text: markdownPlainText(cut) }));
       })
       .filter((text) => text !== "")
-      .map((text) => `${MESSAGE_AUTHOR}: ${text}`),
+      .map((text) => `${APP_BASE_NAME}: ${text}`),
     activity:
       next.level === "everything" && memory.activity !== previous.activity ? memory.activity : null,
   };

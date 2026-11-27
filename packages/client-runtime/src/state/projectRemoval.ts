@@ -1,3 +1,4 @@
+import { clientProductName } from "@t3tools/shared/clientProductName";
 import { isListedThreadLineage } from "@t3tools/contracts";
 
 import type { EnvironmentProject, EnvironmentThreadShell } from "./models.ts";
@@ -71,13 +72,16 @@ export function planProjectRemoval<
       ? [
           resolve(
             msg(
-              "Those threads and any archived threads are deleted from T3 Code. Provider sessions are kept.",
+              "Those threads and any archived threads are deleted from {appName}. Provider sessions are kept.",
+              { appName: clientProductName },
             ),
           ),
         ]
       : [
           resolve(
-            msg("Any archived threads are deleted from T3 Code. Provider sessions are kept."),
+            msg("Any archived threads are deleted from {appName}. Provider sessions are kept.", {
+              appName: clientProductName,
+            }),
           ),
         ]),
     isWholeGroup && !hasOtherMembers
