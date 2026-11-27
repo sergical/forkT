@@ -81,8 +81,8 @@ const handlers = {
         });
       }
       if (input.intent?.kind === "project") {
-        const { link, message } = yield* handoffProjectDeliverable(input.intent);
-        return { link, message };
+        const { link, runId, next, message } = yield* handoffProjectDeliverable(input.intent);
+        return { link, runId, next, message };
       }
       if (input.title === undefined || input.height === undefined)
         return yield* new OrchestratorMcpFailure({

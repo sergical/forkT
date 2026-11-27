@@ -1,3 +1,4 @@
+import { ProjectHandoffRegistration } from "../project/projectHandoffReturn.ts";
 import {
   CommandId,
   type OrchestrationV2Run,
@@ -861,6 +862,15 @@ const layerBase: Layer.Layer<
             );
           }
           const outcomes = yield* applyStoredEvents(storedEvents);
+          const handoff = yield* ProjectHandoffRegistration;
+          if (handoff?.commandId === input.commandId) {
+            const run = normalized.find((event) => event.type === "run.created");
+            if (run === undefined) return yield* Effect.die("Project handoff has no run");
+            yield* sql`
+              INSERT INTO fork_project_handoff_returns (run_id, project_thread_id, source_thread_id, environment_id)
+              VALUES (${run.payload.id}, ${input.threadId}, ${handoff.sourceThreadId}, ${handoff.environmentId})
+            `;
+          }
           yield* effectOutbox.enqueue(input.effects);
           const receipt: CommandReceiptStore.CommandReceiptV2 = {
             commandId: input.commandId,

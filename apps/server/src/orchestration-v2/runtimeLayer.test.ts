@@ -3,6 +3,8 @@ import { MemoryToolkit } from "../mcp/toolkits/memory/tools.ts";
 import * as ForkDream from "../project/ForkDreamService.ts";
 import * as ForkMemory from "../project/ForkMemoryService.ts";
 import * as Coordinator from "../project/ForkCoordinatorService.ts";
+import * as CommandReceipts from "./CommandReceiptStore.ts";
+import * as ProjectHandoffReturns from "../project/ProjectHandoffReturns.ts";
 import * as CoordinatorStore from "../project/ForkCoordinatorStore.ts";
 import * as HtmlRender from "../htmlRender/HtmlRender.ts";
 import * as HtmlHandlers from "../mcp/toolkits/html/handlers.ts";
@@ -12349,7 +12351,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
 
 it.layer(layerSharedApplicationDataPlaneTest)("main coordinator project handoff", (it) => {
   it.effect.each(["html", "writing"] as const)(
-    "queues one %s deliverable with source and returns its link on retry",
+    "delivers one linked %s result to Main when the handoff and its return race a retry",
     (kind) =>
       Effect.gen(function* () {
         const projects = yield* ProjectService.ProjectService;
@@ -12454,10 +12456,32 @@ it.layer(layerSharedApplicationDataPlaneTest)("main coordinator project handoff"
         };
         assert.include(yield* call(kind), receipt);
         const run = (yield* orchestrator.getThreadProjection(destination)).runs[0]!;
+        const report = `Verified ${kind} deliverable.`;
         const now = yield* DateTime.now;
         yield* (yield* EventSink.EventSinkV2).write({
           commandId: CommandId.make("complete-" + kind),
           events: [
+            {
+              id: EventId.make("reply-" + kind),
+              type: "message.updated",
+              threadId: destination,
+              runId: run.id,
+              occurredAt: now,
+              payload: {
+                id: MessageId.make("reply-" + kind),
+                threadId: destination,
+                runId: run.id,
+                nodeId: null,
+                role: "assistant",
+                createdBy: "agent",
+                creationSource: "provider",
+                text: report,
+                createdAt: now,
+                updatedAt: now,
+                streaming: false,
+                attachments: [],
+              },
+            },
             {
               id: EventId.make("complete-" + kind),
               type: "run.updated",
@@ -12472,17 +12496,28 @@ it.layer(layerSharedApplicationDataPlaneTest)("main coordinator project handoff"
         const projection = yield* orchestrator.getThreadProjection(destination);
         assert.equal(projection.runs[0]?.status, "completed");
         assert.lengthOf(projection.runs, 1);
-        assert.lengthOf(projection.messages, 1);
+        assert.lengthOf(projection.messages, 2);
         assert.include(projection.messages[0]!.text, source);
         assert.equal(projection.messages[0]!.senderThreadId, main);
         assert.include(
           projection.messages[0]!.text,
           McpContext.threadLinkFor(scope, main, "Main coordinator"),
         );
+        yield* Effect.all(
+          [ProjectHandoffReturns.reconcile(destination), ProjectHandoffReturns.reconcile()],
+          { concurrency: 2 },
+        );
+        const returned = (yield* orchestrator.getThreadProjection(main)).messages.filter(
+          (m) => m.senderThreadId === destination,
+        );
+        assert.lengthOf(returned, 1);
+        assert.include(returned[0]!.text, receipt.link);
+        assert.include(returned[0]!.text, report);
       }).pipe(
         Effect.provide(
           Coordinator.layer.pipe(
             Layer.provideMerge(CoordinatorStore.layer),
+            Layer.merge(CommandReceipts.layer),
             Layer.provide(ServerSettings.layerTest()),
             Layer.provide(ProviderRegistryMock.layer()),
             Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),

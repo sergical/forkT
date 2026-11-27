@@ -832,6 +832,10 @@ export interface ProjectionStoreV2Shape {
     threadId: ThreadId,
     runId: RunId,
   ) => Effect.Effect<OrchestrationV2ConversationMessage | undefined, ProjectionStoreV2Error>;
+  readonly projectHandoffSource: (
+    threadId: ThreadId,
+    runId: RunId,
+  ) => Effect.Effect<ThreadId | undefined, ProjectionStoreV2Error>;
   readonly getRun: (
     threadId: ThreadId,
     runId: RunId,
@@ -9993,6 +9997,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getCheckpointRollbackContext: readOnReader(getCheckpointRollbackContext),
       getRunMessage: readOnReader(getRunMessage),
       getDelegatedChildControls: readOnReader(getDelegatedChildControls),
+      projectHandoffSource: readOnReader((threadId: ThreadId, runId: RunId) =>
+        sql<{
+          source_thread_id: ThreadId;
+        }>`SELECT source_thread_id FROM fork_project_handoff_returns WHERE run_id = ${runId} AND project_thread_id = ${threadId}`.pipe(
+          Effect.map((rows) => rows[0]?.source_thread_id),
+          Effect.mapError(controlReadError(threadId)),
+        ),
+      ),
       getRun: readOnReader(getRun),
       canStartQueuedRun: readOnReader(canStartQueuedRun),
       getHeldQueuedRuns: readOnReader(getHeldQueuedRuns),

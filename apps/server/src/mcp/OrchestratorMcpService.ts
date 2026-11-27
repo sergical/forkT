@@ -1,3 +1,4 @@
+import { PROJECT_HANDOFF_NEXT } from "../project/projectHandoffReturn.ts";
 import { hashTelemetryId } from "@t3tools/shared/telemetryId";
 import { privateForkTraces } from "../observability/forkAgentMetadata.ts";
 import {
@@ -15,6 +16,7 @@ import {
   isProviderAvailable,
   MessageId,
   isForkMainCoordinatorThreadId,
+  forkCoordinatorProjectId,
   type ModelSelection,
   NodeId,
   ORCHESTRATOR_MCP_RUNNING_TASK_NEXT,
@@ -4029,12 +4031,29 @@ const make = Effect.gen(function* () {
         !childRequests.some(
           (request) => request.status === "pending" && request.responseCapability.type === "live",
         );
+      const handoffSource =
+        parent &&
+        isForkMainCoordinatorThreadId(parent.thread.id) &&
+        result.run &&
+        forkCoordinatorProjectId(input.threadId) !== null
+          ? yield* threadManagement
+              .projectHandoffSource(input.threadId, input.runId ?? result.run.id)
+              .pipe(
+                Effect.mapError(() =>
+                  failure("orchestration_error", "Could not read the project handoff receipt."),
+                ),
+              )
+          : undefined;
       return {
         threadId: input.threadId,
         runId: result.run?.id ?? null,
         status,
         timedOut: result.timedOut,
-        ...(wakesCaller ? { next: ORCHESTRATOR_MCP_RUNNING_TASK_NEXT } : {}),
+        ...(handoffSource !== undefined && handoffSource === parent?.thread.id
+          ? { next: PROJECT_HANDOFF_NEXT }
+          : wakesCaller
+            ? { next: ORCHESTRATOR_MCP_RUNNING_TASK_NEXT }
+            : {}),
         ...(result.resultRun === undefined
           ? {}
           : {

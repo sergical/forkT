@@ -9,6 +9,10 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import {
+  PROJECT_HANDOFF_NEXT,
+  ProjectHandoffRegistration,
+} from "../project/projectHandoffReturn.ts";
 import { ForkCoordinatorService } from "../project/ForkCoordinatorService.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
@@ -51,6 +55,7 @@ export const handoffProjectDeliverable = Effect.fn("fork.project_handoff")(funct
     .join("");
   const origin = McpInvocationContext.threadLinkFor(scope, thread.threadId, "Main coordinator");
   const coordinators = yield* ForkCoordinatorService;
+  const commandId = CommandId.make("project-handoff:" + key);
   const destination = yield* coordinators
     .open(
       {
@@ -58,8 +63,8 @@ export const handoffProjectDeliverable = Effect.fn("fork.project_handoff")(funct
         projectId: input.projectId,
         ...(input.modelSelection && { modelSelection: input.modelSelection }),
         message: {
-          commandId: CommandId.make("project-handoff:" + key),
-          text: `From ${origin} for this project. Complete and verify the request here. Report the outcome back to the source thread.\n\n${input.source}`,
+          commandId,
+          text: `From ${origin} for this project. Complete and verify the request here. Put the verified result or blocker in your final reply here. forkT delivers it to Main automatically. Do not send a separate report.\n\n${input.source}`,
         },
       },
       {
@@ -70,6 +75,11 @@ export const handoffProjectDeliverable = Effect.fn("fork.project_handoff")(funct
       },
     )
     .pipe(
+      Effect.provideService(ProjectHandoffRegistration, {
+        commandId,
+        sourceThreadId: thread.threadId,
+        environmentId: scope.environmentId,
+      }),
       Effect.mapError(
         (error) => new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
       ),
@@ -91,6 +101,10 @@ export const handoffProjectDeliverable = Effect.fn("fork.project_handoff")(funct
   return {
     ...destination,
     link,
+    next:
+      destination.runId === undefined
+        ? "Reply with the project link and end your turn. This earlier handoff used the project’s original reporting instructions."
+        : PROJECT_HANDOFF_NEXT,
     message: `Handed off to ${link}. Include this link in your reply.`,
   };
 });
