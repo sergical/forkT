@@ -10,6 +10,11 @@ module.exports = async ({ appOutDir, electronPlatformName, arch, packager }) => 
     console.log(`[server-compile-cache] Skipping unsupported target ${electronPlatformName}`);
     return;
   }
+  if (electronPlatformName === "darwin" && packager?.appInfo?.productFilename === "forkT") {
+    // The installed t3 launcher still uses this executable path until forkT opens again.
+    const legacyExecutable = path.join(appOutDir, "forkT.app", "Contents", "MacOS", "T3 fork");
+    if (!fs.existsSync(legacyExecutable)) fs.symlinkSync("forkT", legacyExecutable);
+  }
   // Generating the cache runs the bundle, and a PR preview's bundle must never run next to signing secrets.
   if (process.env.T3CODE_DESKTOP_UNTRUSTED_BUNDLE === "true") {
     console.log("[server-compile-cache] Skipping untrusted bundle");
