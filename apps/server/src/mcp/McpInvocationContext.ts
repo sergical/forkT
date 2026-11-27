@@ -213,6 +213,15 @@ export const hiddenFromOutsideClients = (): boolean => {
   return scope === undefined || scope.thread !== undefined;
 };
 
+export const dreamThreadOnly = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return (
+    scope === undefined ||
+    (scope.thread?.threadId.startsWith("fork:dream:") === true && !scope.thread.subagent)
+  );
+};
+
 /** `hiddenFromOutsideClients`, and hidden from a thread whose provider cannot hold for background work. */
 export const hiddenWithoutBackgroundWait = (): boolean => {
   const fiber = Fiber.getCurrent();

@@ -350,6 +350,7 @@ export const McpToolUseCase = Schema.Struct({
   privacy: Schema.optional(Schema.Literals(["commit-safe", "private"])),
   setup: Schema.Struct({
     mainCoordinator: Schema.optional(Schema.Boolean),
+    dreamReview: Schema.optional(Schema.Boolean),
     role: Schema.Literals(["top", "delegated-child", "native-subagent"]),
     /** Runs only on this harness, for cases whose right answer depends on it. */
     harness: Schema.optional(Schema.Literals(["claude", "codex"])),
@@ -567,6 +568,7 @@ export const savesPastedSecrets = t3Tools.some(
 /** A request_secret call that hands T3 a pasted secret, on a ref that takes one. */
 const pastedSecret = (name: string, input: Readonly<Record<string, unknown>>) =>
   savesPastedSecrets && name === "request_secret" && typeof input.value === "string";
+const dreamThreadOnly = enabledWhen(McpInvocationContext.dreamThreadOnly);
 // T3 does not offer these to a delegated child, so its harness never lists them.
 const hiddenFromSubagents = enabledWhen(McpInvocationContext.hiddenFromSubagents);
 // The Linked environments beta starts off, and T3 lists its tools only while it is on.
@@ -592,6 +594,7 @@ const forArm = (value: string, arm: Arm | undefined) =>
 const visibleT3Tools = (options: {
   readonly subagent?: boolean;
   readonly links?: boolean;
+  readonly dreamReview?: boolean;
   readonly forge?: boolean;
   readonly agentFeedback?: Contracts.AgentFeedbackMode;
   readonly arm?: Arm;
@@ -599,6 +602,7 @@ const visibleT3Tools = (options: {
   t3Tools.filter(
     (tool) =>
       !(options.arm === "raw" && forgeToolNames.has(tool.name)) &&
+      (options.dreamReview === true || !dreamThreadOnly.has(tool.name)) &&
       (options.links === true || !hiddenWhileLinksOff.has(tool.name)) &&
       ((options.agentFeedback ?? "off") !== "off" || !hiddenWhileFeedbackOff.has(tool.name)) &&
       (options.forge !== false || !hiddenWithoutForge.has(tool.name)) &&
@@ -723,6 +727,7 @@ export const buildBase = (
     readonly keepUserInstructions: boolean;
     readonly subagent?: boolean;
     readonly links?: boolean;
+    readonly dreamReview?: boolean;
     readonly forge?: boolean;
     /** A native subagent starts from its task: T3 appends nothing to its system prompt. */
     readonly nativeSubagent?: boolean;
@@ -826,6 +831,7 @@ const buildCodexBase = (
     readonly effort?: string | undefined;
     readonly subagent?: boolean;
     readonly links?: boolean;
+    readonly dreamReview?: boolean;
     readonly forge?: boolean;
     /** false: the thread has no agent device access, so T3's text leaves devices out. */
     readonly deviceAccess?: boolean;
@@ -3307,6 +3313,7 @@ const main = Effect.gen(function* () {
     links: boolean,
     forge: boolean,
     agentFeedback: Contracts.AgentFeedbackMode = "off",
+    dreamReview = false,
   ): Effect.Effect<Base, Schema.SchemaError> =>
     codex
       ? decodeCodexCapture(template).pipe(
@@ -3321,6 +3328,7 @@ const main = Effect.gen(function* () {
               deviceAccess,
               browserAccess,
               agentFeedback,
+              dreamReview,
               arm: flags.arm,
             }),
           ),
@@ -3337,6 +3345,7 @@ const main = Effect.gen(function* () {
               deviceAccess,
               browserAccess,
               agentFeedback,
+              dreamReview,
               arm: flags.arm,
             });
             return role === "native-subagent"
@@ -3348,14 +3357,15 @@ const main = Effect.gen(function* () {
         );
   // Codex has no native subagents; its cases with that role run as top-level threads.
   const baseKey = ({ setup }: McpToolUseCase) =>
-    `${codex && setup.role === "native-subagent" ? "top" : setup.role}:${setup.world?.deviceAgentAccess !== false}:${setup.world?.browserAgentAccess !== false}:${setup.linkedEnvironments === true}:${setup.forge !== false}:${setup.world?.agentFeedback ?? "off"}`;
+    `${codex && setup.role === "native-subagent" ? "top" : setup.role}:${setup.world?.deviceAgentAccess !== false}:${setup.world?.browserAgentAccess !== false}:${setup.linkedEnvironments === true}:${setup.forge !== false}:${setup.world?.agentFeedback ?? "off"}:${setup.dreamReview === true}`;
   const base = yield* buildFor("top", true, true, false, true);
-  const bases = new Map<string, Base>([["top:true:true:false:true:off", base]]);
+  const bases = new Map<string, Base>([["top:true:true:false:true:off:false", base]]);
   for (const testCase of selected) {
     const key = baseKey(testCase);
     if (bases.has(key)) continue;
-    const [role = "top", device, browser, links, forge, feedback] = key.split(":") as [
+    const [role = "top", device, browser, links, forge, feedback, dreamReview] = key.split(":") as [
       McpToolUseCase["setup"]["role"],
+      string,
       string,
       string,
       string,
@@ -3371,6 +3381,7 @@ const main = Effect.gen(function* () {
         links === "true",
         forge === "true",
         feedback as Contracts.AgentFeedbackMode,
+        dreamReview === "true",
       ),
     );
   }

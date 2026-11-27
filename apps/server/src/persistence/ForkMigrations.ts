@@ -4,11 +4,13 @@ import * as SqlClient from "effect/sql/SqlClient";
 import Memory from "./ForkMigrations/001_ForkMemory.ts";
 import Coordinators from "./ForkMigrations/002_ForkCoordinators.ts";
 import ProjectHandoffReturns from "./ForkMigrations/003_ProjectHandoffReturns.ts";
+import DreamReviews from "./ForkMigrations/004_DreamReviews.ts";
 
 const loader = Migrator.fromRecord({
   "1_ForkMemory": Memory,
   "2_ForkCoordinators": Coordinators,
   "3_ProjectHandoffReturns": ProjectHandoffReturns,
+  "4_DreamReviews": DreamReviews,
 });
 const run = Migrator.make({});
 
@@ -20,7 +22,7 @@ export const hasPendingForkMigrations = Effect.fn("hasPendingForkMigrations")(fu
   const [latest] = yield* sql<{
     readonly id: number | null;
   }>`SELECT MAX(migration_id) AS id FROM fork_sql_migrations`;
-  return (latest?.id ?? 0) < 3;
+  return (latest?.id ?? 0) < 4;
 });
 
 export const runForkMigrations = Effect.fn("runForkMigrations")(function* () {

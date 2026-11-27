@@ -1,4 +1,10 @@
 import {
+  ForkDreamDecideInput,
+  ForkDreamResult,
+  ForkDreamReview,
+  ForkDreamThreadInput,
+} from "./forkDream.ts";
+import {
   ForkDream,
   ForkDreamInput,
   ForkCoordinator,
@@ -694,6 +700,9 @@ export const WS_METHODS = {
   pullRequestsChecks: "pullRequests.checks",
   pullRequestsActivity: "pullRequests.activity",
   pullRequestsReviewGuide: "pullRequests.reviewGuide",
+  forkDreamReview: "forkDream.review",
+  forkDreamResults: "forkDream.results",
+  forkDreamDecide: "forkDream.decide",
   forkDreamStart: "forkDream.start",
   forkCoordinatorOpen: "forkCoordinator.open",
   forkMemoryGet: "forkMemory.get",
@@ -2516,6 +2525,21 @@ export const WsRpcGroup = RpcGroup.make(
   WsIssueTrackersListRpc,
   WsIssueTrackersConnectRpc,
   WsIssueTrackersBindProjectRpc,
+  Rpc.make(WS_METHODS.forkDreamReview, {
+    payload: ForkDreamThreadInput,
+    success: Schema.NullOr(ForkDreamReview),
+    error: ForkCoordinatorError,
+  }),
+  Rpc.make(WS_METHODS.forkDreamResults, {
+    payload: ForkDreamThreadInput,
+    success: Schema.Array(ForkDreamResult),
+    error: ForkCoordinatorError,
+  }),
+  Rpc.make(WS_METHODS.forkDreamDecide, {
+    payload: ForkDreamDecideInput,
+    success: ForkDreamReview,
+    error: ForkCoordinatorError,
+  }),
   Rpc.make(WS_METHODS.forkDreamStart, {
     payload: ForkDreamInput,
     success: ForkDream,

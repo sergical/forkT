@@ -1,6 +1,7 @@
 import {
   ForkDream,
   ForkDreamInput,
+  ForkDreamSubmitInput,
   ForkCoordinator,
   ForkCoordinatorOpenInput,
   ForkMemory,
@@ -12,7 +13,7 @@ import {
   OrchestratorMcpFailure,
   RunId,
 } from "@t3tools/contracts";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 import * as Schema from "effect/Schema";
 import * as ForkDreamService from "../../../project/ForkDreamService.ts";
 import * as ForkCoordinatorService from "../../../project/ForkCoordinatorService.ts";
@@ -132,4 +133,26 @@ const Dream = Tool.make("t3_dream_start", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true);
 
-export const MemoryToolkit = Toolkit.make(Search, Read, Save, Forget, Coordinator, Dream);
+const SubmitDream = Tool.make("t3_dream_submit", {
+  ...shared,
+  description:
+    "Return this Dream’s suggestions for human review. Use only snapshot sources. expectedRevision:0 proposes a new memory. Submit [] when no change is supported.",
+  parameters: ForkDreamSubmitInput,
+  success: Schema.Struct({ suggestionCount: Schema.Number }),
+  dependencies: [...shared.dependencies, ForkDreamService.ForkDreamService],
+})
+  // Like t3_submit_output, this returns the caller's own result in plan mode.
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.dreamThreadOnly);
+
+export const MemoryToolkit = Toolkit.make(
+  Search,
+  Read,
+  Save,
+  Forget,
+  Coordinator,
+  Dream,
+  SubmitDream,
+);

@@ -15,6 +15,8 @@ import {
   databaseMigrationProgress,
   DATABASE_MIGRATION_PROGRESS_MESSAGE,
 } from "@t3tools/shared/databaseMigrationLog";
+import LegacyCoordinators from "./ForkMigrations/002_ForkCoordinators.ts";
+import DreamReviews from "./ForkMigrations/004_DreamReviews.ts";
 import * as DatabaseMigrationProgress from "./DatabaseMigrationProgress.ts";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
@@ -39,6 +41,37 @@ const v2TableCount = Effect.gen(function* () {
 });
 
 describe("runMigrations", () => {
+  it.effect("carries a prose-only Dream forward with its original prompt and no submission", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* LegacyCoordinators;
+      const old = {
+        projectId: "workspace",
+        commandId: "original",
+        threadId: "fork:dream:original",
+        modelSelection: { instanceId: "codex", model: "test" },
+        evidenceKey: "[][]",
+        text: "Review the retained snapshot and finish with a journal.",
+        sourceCount: 4,
+      };
+      yield* sql`INSERT INTO fork_dreams VALUES (${old.projectId}, ${JSON.stringify(old)})`;
+      yield* DreamReviews;
+      assert.deepStrictEqual(
+        yield* sql`SELECT thread_id, source_count, legacy_prompt, snapshot_json, suggestions_json FROM fork_dream_reviews`,
+        [
+          {
+            thread_id: old.threadId,
+            source_count: 4,
+            legacy_prompt: old.text,
+            snapshot_json: null,
+            suggestions_json: null,
+          },
+        ],
+      );
+      assert.deepStrictEqual(yield* sql`SELECT * FROM fork_dream_requests`, []);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
   it.effect("refuses to start when another migration took a V2 id", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -129,6 +162,7 @@ describe("runMigrations", () => {
         { migration_id: 1, name: "ForkMemory" },
         { migration_id: 2, name: "ForkCoordinators" },
         { migration_id: 3, name: "ProjectHandoffReturns" },
+        { migration_id: 4, name: "DreamReviews" },
       ]);
 
       // query_only rejects BEGIN IMMEDIATE, which CLI startup would otherwise take on the live database.

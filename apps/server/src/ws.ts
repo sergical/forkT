@@ -2962,13 +2962,16 @@ export const layerWsRpc = (
           withPullRequestViewer(input, openedPullRequestRead(pullRequests.activity(input))),
         [WS_METHODS.pullRequestsReviewGuide]: (input) =>
           withPullRequestViewer(input, reviewGuides.get(input)),
-        [WS_METHODS.forkDreamStart]: dreams.start,
+        [WS_METHODS.forkDreamStart]: (input) => dreams.start(input),
+        [WS_METHODS.forkDreamReview]: ({ threadId }) => dreams.review(threadId),
+        [WS_METHODS.forkDreamResults]: ({ threadId }) => dreams.results(threadId),
+        [WS_METHODS.forkDreamDecide]: dreams.decide,
         [WS_METHODS.forkCoordinatorOpen]: (input) => coordinators.open(input),
         [WS_METHODS.forkMemoryGet]: memories.get,
         [WS_METHODS.forkMemorySearch]: memories.search,
         [WS_METHODS.forkMemoryIndex]: memories.index,
         [WS_METHODS.forkMemoryHistory]: memories.history,
-        [WS_METHODS.forkMemorySave]: memories.save,
+        [WS_METHODS.forkMemorySave]: (input) => memories.save(input),
         [WS_METHODS.forkMemoryForget]: memories.forget,
         [WS_METHODS.pullRequestsGenerateReviewGuide]: (input) =>
           withPullRequestViewer(input, reviewGuides.generate(input)),

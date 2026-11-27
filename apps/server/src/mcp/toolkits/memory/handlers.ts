@@ -35,18 +35,47 @@ const access = Effect.fn("ForkMemoryTool.access")(function* (projectId: ProjectI
   return yield* ForkMemoryService.ForkMemoryService;
 });
 
+const dreamFailure = (error: { message: string }) =>
+  new OrchestratorMcpFailure({ code: "invalid_request", message: error.message });
+
+const refuseDreamWrite = McpInvocationContext.McpInvocationContext.pipe(
+  Effect.flatMap((scope) =>
+    scope.thread?.threadId.startsWith("fork:dream:")
+      ? Effect.fail(
+          new OrchestratorMcpFailure({
+            code: "capability_denied",
+            message: "Dreams can only propose changes for human review.",
+          }),
+        )
+      : Effect.void,
+  ),
+);
+
 export const layer = McpToolAccess.toLayer(MemoryToolkit, {
+  t3_dream_submit: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const { scope, caller } = yield* readCaller();
+      if (
+        !scope.thread ||
+        !caller?.activeRunId ||
+        scope.thread.subagent ||
+        !scope.thread.threadId.startsWith("fork:dream:")
+      )
+        return yield* new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Only the Dream's own session can submit this review.",
+        });
+      const dreams = yield* ForkDreamService.ForkDreamService;
+      return yield* dreams
+        .submit(scope.thread.threadId, caller.activeRunId, input)
+        .pipe(Effect.mapError(dreamFailure));
+    }),
+  ),
   t3_dream_start: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const dreams = yield* ForkDreamService.ForkDreamService;
-      return yield* dreams
-        .start(input)
-        .pipe(
-          Effect.mapError(
-            (error) =>
-              new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
-          ),
-        );
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      return yield* dreams.start(input, scope.thread?.threadId).pipe(Effect.mapError(dreamFailure));
     }),
   ),
   t3_coordinator_open: McpToolAccess.writesEnvironment((input) =>
@@ -112,6 +141,7 @@ export const layer = McpToolAccess.toLayer(MemoryToolkit, {
   ),
   t3_memory_save: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
+      yield* refuseDreamWrite;
       const memory =
         input.projectId === MAIN_COORDINATOR_MEMORY_SCOPE
           ? yield* access(input.projectId)
@@ -121,6 +151,7 @@ export const layer = McpToolAccess.toLayer(MemoryToolkit, {
   ),
   t3_memory_forget: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
+      yield* refuseDreamWrite;
       const memory =
         input.projectId === MAIN_COORDINATOR_MEMORY_SCOPE
           ? yield* access(input.projectId)

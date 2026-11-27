@@ -81,3 +81,4 @@ export * from "./clientRpcPermissions.ts";
 export * from "./forkMemory.ts";
 
 export * from "./forkCoordinator.ts";
+export * from "./forkDream.ts";

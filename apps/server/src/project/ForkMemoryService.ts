@@ -37,6 +37,20 @@ export class ForkMemoryService extends Context.Service<
       input: ForkMemoryKey,
     ) => Effect.Effect<ReadonlyArray<ForkMemory>, ForkMemoryError>;
     readonly save: (input: ForkMemorySaveInput) => Effect.Effect<ForkMemory, ForkMemoryError>;
+    readonly saveReviewed: (
+      input: ForkMemorySaveInput,
+      sources: ReadonlyArray<typeof ForkMemorySource.Type>,
+    ) => Effect.Effect<ForkMemory, ForkMemoryError>;
+    readonly matchesRevision: (
+      key: ForkMemoryKey,
+      expected: number,
+    ) => Effect.Effect<boolean, ForkMemoryError>;
+    readonly dreamMemories: (
+      projectId: ProjectId,
+    ) => Effect.Effect<
+      ReadonlyArray<Pick<ForkMemory, "id" | "kind" | "revision" | "title" | "body">>,
+      ForkMemoryError
+    >;
     readonly forget: (input: ForkMemoryForgetInput) => Effect.Effect<void, ForkMemoryError>;
     readonly brief: (input: {
       readonly projectId: ProjectId;
@@ -291,7 +305,10 @@ const make = Effect.gen(function* () {
     return selection.text;
   }, Effect.mapError(storageError));
 
-  const save = Effect.fn("fork.memory.save")(function* (raw: ForkMemorySaveInput) {
+  const save = Effect.fn("fork.memory.save")(function* (
+    raw: ForkMemorySaveInput,
+    snapshotSources?: ReadonlyArray<typeof ForkMemorySource.Type>,
+  ) {
     const input = yield* decodeSave(raw).pipe(
       Effect.mapError((cause) => new ForkMemoryError({ reason: "invalid", cause })),
     );
@@ -331,7 +348,7 @@ const make = Effect.gen(function* () {
         }
         const sources: Array<typeof ForkMemorySource.Type> = [];
         for (const ref of input.sources) {
-          const retained = current?.payload?.sources.find(
+          const retained = (snapshotSources ?? current?.payload?.sources)?.find(
             (source) => source.threadId === ref.threadId && source.messageId === ref.messageId,
           );
           if (retained !== undefined) {
@@ -408,7 +425,45 @@ const make = Effect.gen(function* () {
     );
   }, Effect.mapError(storageError));
 
-  return ForkMemoryService.of({ get, search, index, history, save, forget, brief });
+  const matchesRevision = Effect.fn("ForkMemoryService.matchesRevision")(function* (
+    key: ForkMemoryKey,
+    expected: number,
+  ) {
+    const [current] = yield* sql<{ revision: number; forgotten: number }>`
+      SELECT revision, payload_json IS NULL AS forgotten FROM fork_memories
+      WHERE scope = ${scopeOf(key.projectId)} AND memory_id = ${key.id}`;
+    return current ? !current.forgotten && current.revision === expected : expected === 0;
+  }, Effect.mapError(storageError));
+
+  const dreamMemories = Effect.fn("ForkMemoryService.dreamMemories")(function* (
+    projectId: ProjectId,
+  ) {
+    yield* checkProject(projectId);
+    const entries = yield* sql<Pick<ForkMemory, "id" | "kind" | "revision" | "title" | "body">>`
+      SELECT memory_id AS id, revision, json_extract(payload_json, '$.kind') AS kind,
+        json_extract(payload_json, '$.title') AS title, json_extract(payload_json, '$.body') AS body
+      FROM fork_memories WHERE scope = ${scopeOf(projectId)} AND payload_json IS NOT NULL
+      ORDER BY json_extract(payload_json, '$.updatedAt') DESC, memory_id LIMIT 20`;
+    let remaining = 16_000;
+    return entries.flatMap(({ id, kind, revision, title, body }) => {
+      if (body.length + title.length > remaining) return [];
+      remaining -= body.length + title.length;
+      return [{ id, kind, revision, title, body }];
+    });
+  }, Effect.mapError(storageError));
+
+  return ForkMemoryService.of({
+    get,
+    search,
+    index,
+    history,
+    save,
+    saveReviewed: save,
+    matchesRevision,
+    dreamMemories,
+    forget,
+    brief,
+  });
 });
 
 export const layer = Layer.effect(ForkMemoryService, make);

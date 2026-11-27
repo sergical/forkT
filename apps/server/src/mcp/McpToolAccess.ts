@@ -435,6 +435,7 @@ const linksUnavailable = new OrchestratorMcpFailure({
 });
 
 const THREAD_ONLY = new Set<unknown>([
+  McpInvocationContext.dreamThreadOnly,
   McpInvocationContext.hiddenFromOutsideClients,
   McpInvocationContext.hiddenWithoutBackgroundWait,
 ]);
