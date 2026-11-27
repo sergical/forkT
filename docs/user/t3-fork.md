@@ -12,4 +12,8 @@ The [delegation guide](t3-fork-model-routing.md) explains how coordinators choos
 
 Answer questions, review plans, and approve or decline requests in **Inbox**. The sidebar shows the number of decisions waiting. Each item links to the thread that asked, and Back returns to your place in the queue. A recorded answer clears the item unless the agent asks for another decision. When the agent that asked marks one option as its recommendation, Inbox labels it **Recommended** and starts with it selected; nothing is sent until you press Send. Memory and coordinator state live on the project's environment; they are not synchronized between machines.
 
+To share new messages from one conversation with Sentry, open its thread menu and turn on **Send new messages and replies to Sentry**. You can turn it off in the same menu. Sharing starts off for each conversation, including workers.
+
+In **Sentry → Explore → Agents**, the LLM call count shows how many provider turns forkT observed. A provider can make several internal requests during one turn. The summary shows the last user input for each turn and groups its assistant updates. To see an initial question, a mid-turn instruction, and progress in their original order, open the chat span and read its input and output messages by their `ordinal` values.
+
 The fork defaults to its own data directory, `~/.t3-fork-lab`. Its memory schema has a separate migration history from upstream T3 Code. An explicit home directory still takes precedence.
