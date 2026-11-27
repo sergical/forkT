@@ -13,10 +13,11 @@ const repoRoot = NodePath.resolve(desktopDir, "..", "..");
 const devBundleIdSuffix = NodePath.basename(repoRoot)
   .toLowerCase()
   .replaceAll(/[^a-z0-9]+/g, "");
-const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Beta)";
+const APP_DISPLAY_NAME = isDevelopment ? "forkT (Dev)" : "forkT";
+// A launcher built from a checkout must not register as the installed T3 Code or forkT app.
 const APP_BUNDLE_ID = isDevelopment
   ? `com.t3tools.t3code.dev.${devBundleIdSuffix || "local"}`
-  : "com.t3tools.t3code";
+  : `com.sergical.t3fork.local.${devBundleIdSuffix || "local"}`;
 const APP_PROTOCOL_SCHEMES = isDevelopment ? ["t3fork-dev"] : ["t3fork"];
 const LAUNCHER_VERSION = 20;
 const developmentMacIconPngPath = NodePath.join(
@@ -268,8 +269,8 @@ function resolveMacBundleInfoPlistStrings(executableName) {
     CFBundleExecutable: executableName,
     CFBundleIconFile: "icon.icns",
     NSScreenCaptureUsageDescription:
-      "T3 Code captures the active window when you use the snapshot shortcut.",
-    NSDocumentsFolderUsageDescription: "T3 Code reads project files you open in the desktop app.",
+      "forkT captures the active window when you use the snapshot shortcut.",
+    NSDocumentsFolderUsageDescription: "forkT reads project files you open in the desktop app.",
   };
 }
 

@@ -5,7 +5,27 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
 
-import { readForkPendingUpdate } from "./forkPendingUpdate.ts";
+import { readForkPendingUpdate, resolveForkPendingUpdatePaths } from "./forkPendingUpdate.ts";
+
+it("enables local updates only for the running fork installation before and after its rename", () => {
+  const paths = (name: string) =>
+    resolveForkPendingUpdatePaths(
+      {
+        platform: "darwin",
+        isPackaged: true,
+        homeDirectory: "/Users/alice",
+        resourcesPath: `/Applications/${name}.app/Contents/Resources`,
+      },
+      {},
+    );
+  for (const name of ["T3 fork", "forkT"]) {
+    expect(paths(name)).toMatchObject({
+      appPath: `/Applications/${name}.app`,
+      stateDir: "/Users/alice/.t3-fork-lab/sync",
+    });
+  }
+  expect(paths("T3 Code (Nightly)")).toBeNull();
+});
 
 it("shows the pending build's commit range until sync marks it installed", async () => {
   const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-fork-pending-"));

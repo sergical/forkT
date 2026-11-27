@@ -150,7 +150,7 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
   const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
   if (!wasQuitting) {
     yield* electronDialog.showErrorBox(
-      m(msg("T3 Code failed to start")),
+      m(msg("forkT failed to start")),
       `Stage: ${stage}\n${message}${detail}`,
     );
   }
@@ -410,7 +410,8 @@ const startup = Effect.gen(function* () {
     });
   }
 
-  yield* appIdentity.configure;
+  // macOS takes its Safe Storage Keychain name from the embedded manifest before app readiness.
+  if (environment.platform !== "darwin") yield* appIdentity.configure;
   yield* lifecycle.register;
   yield* clerk.configure;
 
