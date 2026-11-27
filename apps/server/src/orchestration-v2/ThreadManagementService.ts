@@ -506,6 +506,7 @@ export interface ThreadManagementServiceShape {
     readonly projectId: ProjectId;
     readonly instanceId: ProviderInstanceId;
   }) => Effect.Effect<boolean>;
+  readonly projectHandoffSource: Orchestrator.OrchestratorV2Shape["projectHandoffSource"];
   /** Receipt replays start no work; skip enablement checks with the same command id so settings cannot reject accepted retries. */
   readonly hasReceipt: (commandId: CommandId) => Effect.Effect<boolean>;
   readonly waitForThread: (
@@ -2004,6 +2005,7 @@ const make = Effect.gen(function* () {
     assertProviderInstanceEnabled,
     isProviderInstanceEnabledForProject,
     hasReceipt,
+    projectHandoffSource: orchestrator.projectHandoffSource,
     waitForThread,
     settleAfterRun,
     settleThread,

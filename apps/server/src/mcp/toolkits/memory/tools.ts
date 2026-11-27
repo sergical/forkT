@@ -10,6 +10,7 @@ import {
   ForkMemorySearchInput,
   OrchestratorMcpEnvironmentTarget,
   OrchestratorMcpFailure,
+  RunId,
 } from "@t3tools/contracts";
 import { Tool, Toolkit } from "effect/ai";
 import * as Schema from "effect/Schema";
@@ -108,6 +109,8 @@ const Coordinator = Tool.make("t3_coordinator_open", {
   success: Schema.Struct({
     ...ForkCoordinator.fields,
     link: Schema.optional(Schema.String),
+    next: Schema.optional(Schema.String),
+    runId: Schema.optional(RunId),
     message: Schema.optional(Schema.String),
   }),
   dependencies: [...shared.dependencies, ForkCoordinatorService.ForkCoordinatorService],

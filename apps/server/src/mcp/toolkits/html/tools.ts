@@ -1,5 +1,5 @@
 import { ForkCoordinatorService } from "../../../project/ForkCoordinatorService.ts";
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import { OrchestratorMcpFailure, RunId } from "@t3tools/contracts";
 import {
   HTML_RENDER_COLUMN_WIDTH,
   HTML_RENDER_LAYOUT_GUIDE,
@@ -103,6 +103,8 @@ const HtmlRenderTool = Tool.make(HTML_RENDER_TOOL_NAME, {
   }),
   success: Schema.Struct({
     link: Schema.optional(Schema.String),
+    next: Schema.optional(Schema.String),
+    runId: Schema.optional(RunId),
     htmlRender: Schema.optional(
       Schema.Struct({
         attachmentId: Schema.String,

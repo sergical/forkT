@@ -429,6 +429,7 @@ export interface OrchestratorV2Shape {
       dispatch: OrchestratorV2Shape["dispatch"],
     ) => Effect.Effect<void, E, R>;
   }) => Effect.Effect<void, E | OrchestratorV2Error, R>;
+  readonly projectHandoffSource: ProjectionStoreV2["Service"]["projectHandoffSource"];
   readonly delegatedTaskResultPending: (
     childThreadId: ThreadId,
     taskId?: NodeId,
@@ -17647,6 +17648,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           Effect.map(Effect.mapError(shellProjectionError)),
         );
     }),
+    projectHandoffSource: projectionStore.projectHandoffSource,
     getThreadShell: Effect.fn("OrchestratorV2.getThreadShell")(function (threadId) {
       return projectionStore
         .getThreadShell(threadId)

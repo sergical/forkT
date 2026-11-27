@@ -43,7 +43,7 @@ export class ForkCoordinatorService extends Context.Service<
     readonly open: (
       input: ForkCoordinatorOpenInput,
       handoff?: Handoff,
-    ) => Effect.Effect<ForkCoordinator, ForkCoordinatorError>;
+    ) => Effect.Effect<ForkCoordinator & { readonly runId?: RunId }, ForkCoordinatorError>;
   }
 >()("t3/project/ForkCoordinatorService") {}
 
@@ -211,6 +211,7 @@ export const layer = Layer.effect(
             message: "Choose a project for its coordinator.",
           });
         const coordinator = yield* ensure({ ...input, projectId });
+        let runId: RunId | undefined;
         let routing: ForkCoordinator["routing"] = coordinator.routing;
         // Delivered under its own command, never the launch's, so a retry replays it and
         // concurrent first sends each land.
@@ -264,6 +265,14 @@ export const layer = Layer.effect(
             ...(handoff && { senderThreadId: handoff.senderThreadId }),
             ...(selection && { modelSelection: selection }),
           });
+          if (
+            handoff !== undefined &&
+            (!sent.dispatch.replayed ||
+              (yield* threads.projectHandoffSource(coordinator.threadId, sent.run.id)) ===
+                handoff.senderThreadId)
+          ) {
+            runId = sent.run.id;
+          }
           if (traceFork && handoff !== undefined) {
             yield* Effect.annotateCurrentSpan({
               "sentry.op": "fork.handoff_receipt",
@@ -286,7 +295,7 @@ export const layer = Layer.effect(
             });
           }
         }
-        return routing ? { ...coordinator, routing } : coordinator;
+        return { ...coordinator, ...(routing && { routing }), ...(runId && { runId }) };
       },
       Effect.mapError((error) =>
         isCoordinatorError(error)
