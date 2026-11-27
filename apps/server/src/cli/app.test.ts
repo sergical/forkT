@@ -310,7 +310,8 @@ describe("t3 app", () => {
   it.effect("prefers the installed desktop app when a dev desktop is also running", () =>
     withTempDirectory("t3-app-preferred-test-", (root) =>
       Effect.gen(function* () {
-        const baseDir = NodePath.join(root, ".t3");
+        const baseDir = NodePath.join(root, ".t3-fork-lab");
+        const stock = yield* fakeDesktop({ baseDir: NodePath.join(root, ".t3") });
         const desktop = yield* fakeDesktop({ baseDir });
         const development = yield* fakeDesktop({ baseDir, stateSubdirectory: "dev" });
 
@@ -318,6 +319,7 @@ describe("t3 app", () => {
 
         expect(desktop.received).toHaveLength(1);
         expect(development.received).toHaveLength(0);
+        expect(stock.received).toHaveLength(0);
       }).pipe(Effect.provideService(HostProcess.HomeDirectory, root), Effect.scoped),
     ),
   );
@@ -325,7 +327,7 @@ describe("t3 app", () => {
   it.effect("finds the dev desktop when the default desktop socket is absent", () =>
     withTempDirectory("t3-app-dev-test-", (root) =>
       Effect.gen(function* () {
-        const baseDir = NodePath.join(root, ".t3");
+        const baseDir = NodePath.join(root, ".t3-fork-lab");
         const development = yield* fakeDesktop({ baseDir, stateSubdirectory: "dev" });
 
         yield* runCli(["app"]);
@@ -340,7 +342,7 @@ describe("t3 app", () => {
   it.effect("never searches a dev state directory for an explicit T3 home", () =>
     withTempDirectory("t3-app-explicit-test-", (root) =>
       Effect.gen(function* () {
-        const baseDir = NodePath.join(root, ".t3");
+        const baseDir = NodePath.join(root, ".t3-fork-lab");
         const development = yield* fakeDesktop({ baseDir, stateSubdirectory: "dev" });
 
         const flagError = yield* runCli(["app", "--base-dir", baseDir]).pipe(Effect.flip);
@@ -358,7 +360,7 @@ describe("t3 app", () => {
     (responseKind) =>
       withTempDirectory("t3-app-response-test-", (root) =>
         Effect.gen(function* () {
-          const baseDir = NodePath.join(root, ".t3");
+          const baseDir = NodePath.join(root, ".t3-fork-lab");
           const desktop = yield* fakeDesktop({
             baseDir,
             reply: (request) =>
