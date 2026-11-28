@@ -12,7 +12,7 @@ import { useUiStateStore } from "../../uiStateStore";
 import { resolveSidebarFolderDot, resolveThreadLastVisitedAt } from "../Sidebar.logic";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Button } from "../ui/button";
-import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { SharedTooltipTrigger, useSharedTooltip } from "../ui/shared-tooltip";
 
 const FOLDER_DOT_CLASS_NAME = {
   attention: "bg-warning",
@@ -70,15 +70,22 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
       )
     : null;
   const hasCount = collapsed && hiddenThreads.length > 0;
+  const unreadHint = dot === "unread" ? gt("A hidden thread has an unread result.") : undefined;
+  const unreadTooltip = useSharedTooltip(
+    { render: () => unreadHint, contentKey: unreadHint, side: "right" },
+    unreadHint !== undefined,
+  );
   return (
     <li
       data-testid="sidebar-project-folder"
       className="group/project-folder relative mt-2 list-none first:mt-0"
     >
       <button
+        {...unreadTooltip}
         type="button"
         data-sidebar-row={rowId}
         aria-expanded={!collapsed}
+        aria-description={unreadHint}
         onClick={() => props.onToggle(group)}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -99,11 +106,13 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
             <span className="sr-only">{m(FOLDER_DOT_LABEL[dot])}</span>
           </span>
         ) : null}
-        {/* Widens to the new-thread button while it shows; empty, it also gives back its flex gap. */}
+        {/* Reserve the new-thread button's space so it cannot move under a pointer aimed at green. */}
         <span
           className={cn(
             "flex min-w-0 shrink-0 justify-end group-hover/project-folder:min-w-4 group-has-[[data-sidebar-action-for]:focus]/project-folder:min-w-4 pointer-coarse:min-w-4",
+            dot === "unread" && "min-w-4",
             !hasCount &&
+              dot !== "unread" &&
               "-ml-2.5 group-hover/project-folder:ml-0 group-has-[[data-sidebar-action-for]:focus]/project-folder:ml-0 pointer-coarse:ml-0",
           )}
         >
