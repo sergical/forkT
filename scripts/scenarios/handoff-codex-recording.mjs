@@ -111,6 +111,8 @@ async function reply(params, turn) {
       publish(await manifest(params.cwd ?? connection.thread.cwd));
     } else if (prompt.trim() === "Confirm that Main is available again.") {
       publish("Main is available again.");
+    } else if (prompt.trim().startsWith("Record shipment reference ")) {
+      publish("Recorded " + prompt.trim().slice("Record shipment reference ".length));
     } else {
       throw Error("Unexpected provider turn: " + prompt.slice(-250));
     }

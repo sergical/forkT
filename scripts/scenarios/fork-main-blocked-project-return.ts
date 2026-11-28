@@ -243,6 +243,14 @@ export const blockedProjectReturn = () =>
         const started = await turns();
         expect(started).toHaveLength(3);
         expect(started[2]?.prompt.trim()).toBe(ordinary);
+        const nextMessage = "Record shipment reference W-18.";
+        await send(nextMessage);
+        await waitForRun(firstRun.ordinal + 4, "completed");
+        await expect(screen.getByText("Recorded W-18.", { exact: true })).toBeVisible();
+        const afterNext = await turns();
+        expect(afterNext).toHaveLength(4);
+        expect(afterNext[3]?.prompt.trim()).toBe(nextMessage);
+        expect(reports()).toEqual(callbacks);
         await app.screenshot("recovered-main");
       } finally {
         await NodeFSP.writeFile(settingsPath, original);
