@@ -1,5 +1,6 @@
 import { expect } from "e2e";
 
+import { blockedProjectReturn } from "./fork-main-blocked-project-return.ts";
 import { test, WEB } from "./t3.ts";
 
 test(
@@ -21,3 +22,5 @@ test(
     await expect(screen.getByRole("button", "Skip, let me work")).toHaveCount(0);
   },
 );
+
+blockedProjectReturn();
