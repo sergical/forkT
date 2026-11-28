@@ -227,7 +227,6 @@ export const blockedProjectReturn = () =>
         expect(await turns()).toHaveLength(2);
         await app.screenshot("blocked-human-message");
         await setWindow(5);
-        await refresh(5);
         await screen.getByRole("button", "Retry", { exact: true }).tap();
         await waitForRun(firstRun.ordinal + 3, "completed");
         await browser.reload();
