@@ -137,7 +137,6 @@ test(
     await expect(screen.getByRole("button", /^Strict schemas/)).toBeVisible();
     await app.screenshot("dark-inbox-origin");
     await screen.getByRole("button", /^Strict schemas/).tap();
-    await screen.getByRole("button", "Submit", { exact: true }).tap();
     await expect(screen.getByText("plan questions fixture complete", { exact: false })).toHaveCount(
       1,
     );
