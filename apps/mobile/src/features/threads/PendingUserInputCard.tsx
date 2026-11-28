@@ -1,14 +1,17 @@
 import { Button } from "../../components/ui/Button";
 import { QuestionAttachments } from "./QuestionAttachments";
 import type { EnvironmentId, RuntimeRequestId, ThreadId } from "@t3tools/contracts";
-import type { ThreadUserInputQuestion } from "@t3tools/client-runtime/state/thread-requests";
+import {
+  sharedAnswerNotice,
+  type ThreadUserInputQuestion,
+} from "@t3tools/client-runtime/state/thread-requests";
 import {
   markdownProseDirection,
   textDirection,
   type TextDirection,
 } from "@t3tools/shared/textDirection";
 import { useNavigation } from "@react-navigation/native";
-import { Plural, T, useGT, Var } from "gt-react-native";
+import { Plural, T, useGT, useMessages, Var } from "gt-react-native";
 import { useRef } from "react";
 import { Platform, Pressable, ScrollView, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
@@ -123,6 +126,7 @@ function QuestionText(props: {
 
 export function PendingUserInputCard(props: PendingUserInputCardProps) {
   const gt = useGT();
+  const audience = sharedAnswerNotice(props.pendingUserInput, useMessages());
   const questionCount = props.pendingUserInput.questions.length;
   const canRespond = props.pendingUserInput.responseCapability !== "not_resumable";
   const isResponding = props.respondingUserInputId === props.pendingUserInput.requestId;
@@ -283,6 +287,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
             </T>
           </Text>
         ) : null}
+        {audience && <Text className="font-sans text-sm text-foreground-muted">{audience}</Text>}
         {props.pendingUserInput.questions.map((question) => {
           const draft = props.drafts[question.id];
           return (

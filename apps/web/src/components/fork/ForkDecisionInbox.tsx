@@ -1,9 +1,11 @@
 import {
+  AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   type OrchestrationV2PlanArtifact,
   type EnvironmentId,
   type ProjectId,
   type ScopedThreadRef,
+  type ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
@@ -16,6 +18,7 @@ import {
 import {
   derivePendingThreadRequests,
   fullAccessOverrideExplanation,
+  sharedAnswerNotice,
   seedRecommendedSelections,
   seedUserInputDraftAnswers,
   type ThreadPendingApproval,
@@ -26,6 +29,11 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+import { resolveListedAncestorThreadRef } from "@t3tools/client-runtime/state/threads";
+import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
+import { useOpenPrLink } from "~/lib/openPullRequestLink";
+import { filesystemEnvironment } from "~/state/filesystem";
+import { useEnvironmentQuery } from "~/state/query";
 import { newMessageId } from "~/lib/utils";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRightIcon } from "lucide-react";
@@ -107,6 +115,28 @@ const inboxThreadsAtom = Atom.family((environmentId: EnvironmentId) =>
   ),
 );
 
+const conversationGroupsAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get) => {
+    const groups = new Map<
+      ThreadId,
+      { owner: EnvironmentThreadShell; threads: EnvironmentThreadShell[] }
+    >();
+    const shell = (ref: ScopedThreadRef) => get(environmentThreadShells.quietThreadShellAtom(ref));
+    for (const thread of get(inboxThreadsAtom(environmentId))) {
+      const ancestorRef = resolveListedAncestorThreadRef(
+        scopeThreadRef(environmentId, thread.id),
+        shell,
+      );
+      const ancestor = ancestorRef.environmentId === environmentId ? shell(ancestorRef) : null;
+      const owner = ancestor?.projectId === thread.projectId ? ancestor : thread;
+      const group = groups.get(owner.id);
+      if (group) group.threads.push(thread);
+      else groups.set(owner.id, { owner, threads: [thread] });
+    }
+    return Array.from(groups.values());
+  }),
+);
+
 const decisionCountAtom = Atom.family((environmentId: EnvironmentId) =>
   Atom.make((get) => {
     let count = 0;
@@ -141,9 +171,9 @@ export function ForkDecisionInbox({
 }) {
   const projects = useProjects();
   const [recorded, setRecorded] = useState<{ message: string } | null>(null);
-  const threads = useAtomValue(inboxThreadsAtom(environmentId));
+  const groups = useAtomValue(conversationGroupsAtom(environmentId));
   const candidates =
-    projectId === null ? threads : threads.filter((thread) => thread.projectId === projectId);
+    projectId === null ? groups : groups.filter(({ owner }) => owner.projectId === projectId);
   return (
     <div className="divide-y">
       {recorded && (
@@ -157,19 +187,31 @@ export function ForkDecisionInbox({
             <T>No decisions need your attention.</T>
           </p>
         ))}
-      {candidates.map((thread) => (
-        <InboxThread
-          key={thread.id}
-          thread={thread}
-          onRecorded={(message) => setRecorded({ message })}
-          projectName={
-            projects.find(
-              (project) =>
-                project.id === thread.projectId && project.environmentId === environmentId,
-            )?.title
-          }
-        />
-      ))}
+      {candidates.map(({ owner, threads }) => {
+        const project = projects.find(
+          (entry) => entry.id === owner.projectId && entry.environmentId === environmentId,
+        );
+        const grouped = threads.some((thread) => thread.id !== owner.id);
+        return (
+          <div key={owner.id} className="divide-y">
+            {grouped && (
+              <h2 className="pt-4 pb-2 text-sm font-semibold">
+                {project && project.title !== owner.title
+                  ? `${project.title} · ${owner.title}`
+                  : owner.title}
+              </h2>
+            )}
+            {threads.map((thread) => (
+              <InboxThread
+                key={thread.id}
+                thread={thread}
+                onRecorded={(message) => setRecorded({ message })}
+                projectName={grouped ? undefined : project?.title}
+              />
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -185,6 +227,18 @@ function InboxThread({
 }) {
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const projection = useQuietThreadProjection(threadRef)?.projection;
+  const canReadFiles = useEnvironmentScope(thread.environmentId, AuthFilesystemReadScope);
+  const pr = resolveThreadCurrentPullRequestLink(thread.pullRequests) ?? thread.branchPullRequest;
+  const folder = useEnvironmentQuery(
+    !pr && canReadFiles && thread.worktreePath
+      ? filesystemEnvironment.taskFolder({
+          environmentId: thread.environmentId,
+          input: { worktreePath: thread.worktreePath },
+        })
+      : null,
+  );
+  const openPr = useOpenPrLink(threadRef);
+  const repositories = folder.data?.taskFolder?.repositories ?? [];
   if (projection === undefined) {
     return (
       <p className="py-3 text-sm text-muted-foreground" role="status">
@@ -209,20 +263,34 @@ function InboxThread({
     return text && text.length > 180 ? text.slice(0, 177).trimEnd() + "…" : text;
   };
   const origin = (target: { question?: string; item?: string; plan?: string }) => (
-    <Link
-      to="/$environmentId/$threadId"
-      params={buildThreadRouteParams(threadRef)}
-      hash={new URLSearchParams(
-        Object.entries(target).flatMap(([kind, id]) => (id ? [[`inbox-${kind}`, id]] : [])),
-      ).toString()}
-      hashScrollIntoView={false}
-      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
-    >
-      {projectName && projectName !== thread.title
-        ? `${projectName} · ${thread.title}`
-        : thread.title}
-      <ArrowUpRightIcon aria-hidden className="size-3" />
-    </Link>
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted-foreground">
+      <Link
+        to="/$environmentId/$threadId"
+        params={buildThreadRouteParams(threadRef)}
+        hash={new URLSearchParams(
+          Object.entries(target).flatMap(([kind, id]) => (id ? [[`inbox-${kind}`, id]] : [])),
+        ).toString()}
+        hashScrollIntoView={false}
+        className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+      >
+        {projectName && projectName !== thread.title
+          ? `${projectName} · ${thread.title}`
+          : thread.title}
+        <ArrowUpRightIcon aria-hidden className="size-3" />
+      </Link>
+      {repositories.length > 0 && <span>{repositories.map((repo) => repo.name).join(", ")}</span>}
+      {pr && /^https?:\/\//i.test(pr.url) && (
+        <a
+          href={pr.url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => openPr(event, pr.url)}
+          className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
+        >
+          {`${pr.repository}#${pr.number}`}
+        </a>
+      )}
+    </div>
   );
   return (
     <div className="divide-y">
@@ -491,6 +559,7 @@ function InboxQuestion({
   const gt = useGT();
   const m = useMessages();
   const answers = buildPendingUserInputAnswers(prompt.questions, drafts);
+  const audience = sharedAnswerNotice(prompt, m);
   const live = prompt.responseCapability !== "not_resumable";
   return (
     <form
@@ -522,6 +591,7 @@ function InboxQuestion({
       }}
     >
       {origin}
+      {audience && <p className="text-xs text-muted-foreground">{audience}</p>}
       {context && <p className="text-sm text-muted-foreground">{context}</p>}
       {prompt.questions.map((question) => {
         const draft = drafts[question.id];

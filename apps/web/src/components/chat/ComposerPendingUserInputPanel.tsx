@@ -1,6 +1,7 @@
 import { type RuntimeRequestId, type ScopedThreadRef } from "@t3tools/contracts";
 import { markdownProseDirection, textDirection } from "~/textDirection";
-import { useGT } from "gt-react";
+import { useGT, useMessages } from "gt-react";
+import { sharedAnswerNotice } from "@t3tools/client-runtime/state/thread-requests";
 import { memo, use, useEffect, useEffectEvent, useRef, useState } from "react";
 import { BackgroundThreadContext } from "./backgroundThread";
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -85,6 +86,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   onDismiss: (requestId: RuntimeRequestId) => void;
 }) {
   const gt = useGT();
+  const audience = sharedAnswerNotice(prompt, useMessages());
   // Message-mode requests remain answerable after their provider turn ends.
   const canRespond = prompt.responseCapability !== "not_resumable";
   const responseDisabled = disabled || isResponding || !canRespond;
@@ -271,6 +273,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               lineBreaks
               className={cn("pt-0.5 text-foreground/85", questionTextAlign)}
             />
+            {audience && <p className="text-xs text-muted-foreground">{audience}</p>}
             {/* Rows span the header row's width so the radios align with the question text and the shortcut column sits under the dismiss button. */}
             <div className="-ms-2 mt-1.5 sm:-ms-1.5">
               {activeQuestion.options.map((option, index) => {

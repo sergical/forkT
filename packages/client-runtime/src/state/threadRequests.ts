@@ -99,6 +99,19 @@ export interface ThreadPendingUserInput {
   readonly responseCapability: OrchestrationV2RuntimeRequest["responseCapability"]["type"];
   readonly responseMode?: "message";
   readonly dismissible: boolean;
+  readonly sharedWithThreadIds?: ReadonlyArray<ThreadId>;
+}
+
+export function sharedAnswerNotice(
+  prompt: ThreadPendingUserInput,
+  resolve: MFunctionType = mFallback,
+) {
+  if (!prompt.sharedWithThreadIds?.length) return null;
+  return resolve(
+    msg("Your answer will reach {count} workers.", {
+      count: prompt.sharedWithThreadIds.length + 1,
+    }),
+  );
 }
 
 export interface PendingThreadRequests {
@@ -306,6 +319,9 @@ export function derivePendingThreadRequests(
           multiSelect: question.multiSelect ?? false,
         })),
         responseCapability,
+        ...(request.sharedWithThreadIds?.length
+          ? { sharedWithThreadIds: request.sharedWithThreadIds }
+          : {}),
         dismissible: item.responseMode === "message" || responseCapability === "message",
         ...(item.responseMode === "message" || responseCapability === "message"
           ? { responseMode: "message" as const }

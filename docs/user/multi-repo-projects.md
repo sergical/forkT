@@ -90,6 +90,11 @@ branch from. On web and desktop, your last choice is remembered for the project 
 that browser. To bring another repository into a running thread, pick it under **Other
 repositories** in the thread details panel or the mobile Git sheet.
 
+In forkT, you can ask the project coordinator to give different repositories to different workers.
+For example, one worker can update the API while another updates the web app. If both need the
+same decision, ask the coordinator to share the question with both. Answer it once in Inbox or
+in the asking worker’s conversation. Each worker receives the answer, and other questions stay open.
+
 Each repository starts from the thread's base branch where it has a branch of that name, and from
 its own default branch otherwise. A plain folder has no branch picker, so on web and desktop you
 name the base branch at the bottom of the repositories control.
