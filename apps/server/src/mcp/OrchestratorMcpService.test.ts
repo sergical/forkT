@@ -6175,49 +6175,142 @@ describe("OrchestratorMcpService thread stop", () => {
       }),
   });
 
+  const models = ["gpt-6.2-sol", "gpt-6.2-astra"] as const;
+  const provider: ServerProvider = {
+    instanceId,
+    driver,
+    enabled: true,
+    installed: true,
+    version: null,
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "1970-01-01T00:00:00.000Z",
+    slashCommands: [],
+    skills: [],
+    models: models.map((slug) => ({
+      slug,
+      name: slug,
+      isCustom: false,
+      capabilities: {
+        optionDescriptors: [
+          {
+            type: "select",
+            id: "reasoningEffort",
+            label: "Effort",
+            options: ["low", "xhigh"].map((id) => ({ id, label: id })),
+          },
+        ],
+      },
+    })),
+    usageLimits: {
+      checkedAt: "1970-01-01T00:00:00.000Z",
+      windows: [
+        {
+          id: "secondary",
+          label: "Weekly",
+          kind: "weekly",
+          usedPercent: 46,
+          resetsAt: "1970-01-04T04:00:00.000Z",
+        },
+      ],
+    },
+  };
+
+  it.effect("starts a Main send on its pinned account after the allowance recovers", () =>
+    Effect.gen(function* () {
+      const main = ThreadId.make("fork:global:1");
+      const pin = {
+        instanceId,
+        model: models[1],
+        options: [{ id: "reasoningEffort", value: "xhigh" }],
+      };
+      const window = provider.usageLimits!.windows[0]!;
+      const exhausted = {
+        ...provider,
+        usageLimits: { ...provider.usageLimits!, windows: [{ ...window, usedPercent: 100 }] },
+      };
+      let cached = exhausted;
+      let current = exhausted;
+      const cwd = yield* checkpointWorkspace("main-routing");
+      const received: ProviderAdapter.ProviderAdapterV2TurnInput[] = [];
+      const engine = ProviderReplayHarness.layerWithRegistry(
+        { name: "main-routing", runtimePolicyOverride: { cwd } },
+        ProviderAdapterRegistry.layerSingle(liveAdapter(cwd, received)),
+        {
+          runEffectWorker: false,
+          serverSettings: {
+            forkCoordinatorRouting: { excludedInstances: [], excludedDrivers: [] },
+          },
+          providerRegistry: Layer.mock(ProviderRegistry.ProviderRegistry)({
+            getProviders: Effect.sync(() => [cached]),
+            refreshUsageLimits: () =>
+              Effect.sync(() => {
+                cached = current;
+              }),
+          }),
+        },
+      );
+      yield* Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("create-main"),
+          threadId: main,
+          projectId: ProjectId.make("scratch"),
+          title: "Main",
+          modelSelection: pin,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: cwd,
+          createdBy: "user",
+          creationSource: "web",
+        });
+        const send = (text: string) =>
+          orchestrator
+            .dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make(text),
+              threadId: main,
+              messageId: MessageId.make(text),
+              text,
+              attachments: [],
+              dispatchMode: { type: "start_immediately" },
+              createdBy: "user",
+              creationSource: "web",
+            })
+            .pipe(Effect.andThen(worker.drain()));
+        yield* TestClock.adjust("1 hour");
+        const checkedAt = DateTime.formatIso(yield* DateTime.now);
+        current = { ...exhausted, usageLimits: { ...exhausted.usageLimits, checkedAt } };
+        yield* send("First send");
+        const blocked = yield* orchestrator.getThreadProjection(main);
+        assert.isEmpty(received);
+        assert.isNull(blocked.runs[0]?.startedAt);
+        yield* TestClock.adjust("1 minute");
+        current = {
+          ...provider,
+          usageLimits: { checkedAt: DateTime.formatIso(yield* DateTime.now), windows: [window] },
+        };
+        yield* send("Second send");
+        assert.deepEqual(
+          received.map((turn) => turn.modelSelection),
+          [pin],
+        );
+        const failure = blocked.turnItems.find((item) => item.type === "error")?.failure;
+        assert.strictEqual(failure?.code, "fork_subscription_routing");
+        assert.isTrue(failure?.retryable);
+        assert.include(failure!.message, pin.instanceId);
+        assert.include(failure!.message, pin.model);
+        assert.include(failure!.message, checkedAt);
+        assert.include(failure!.message, window.resetsAt!);
+      }).pipe(Effect.provide(engine));
+    }),
+  );
+
   it.effect("routes the project handoff and its workers through the receiving runtime", () =>
     Effect.gen(function* () {
-      const models = ["gpt-6.2-sol", "gpt-6.2-astra"] as const;
-      const provider: ServerProvider = {
-        instanceId,
-        driver,
-        enabled: true,
-        installed: true,
-        version: null,
-        status: "ready",
-        auth: { status: "authenticated" },
-        checkedAt: "1970-01-01T00:00:00.000Z",
-        slashCommands: [],
-        skills: [],
-        models: models.map((slug) => ({
-          slug,
-          name: slug,
-          isCustom: false,
-          capabilities: {
-            optionDescriptors: [
-              {
-                type: "select",
-                id: "reasoningEffort",
-                label: "Effort",
-                options: ["low", "xhigh"].map((id) => ({ id, label: id })),
-              },
-            ],
-          },
-        })),
-        usageLimits: {
-          checkedAt: "1970-01-01T00:00:00.000Z",
-          windows: [
-            {
-              id: "secondary",
-              label: "Weekly",
-              kind: "weekly",
-              usedPercent: 46,
-              resetsAt: "1970-01-04T04:00:00.000Z",
-            },
-          ],
-        },
-      };
-
       const projectId = ProjectId.make("routing");
       const coordinatorId = ThreadId.make("fork:project:routing:1");
       const cwd = yield* checkpointWorkspace("fork-routing");

@@ -207,7 +207,10 @@ function claudeAuthMetadata(input: {
 function apiProviderAuthMetadata(
   apiProvider: string | undefined,
 ): { readonly type: string; readonly label: string } | undefined {
-  return apiProvider === "bedrock" ? { type: "bedrock", label: "Amazon Bedrock" } : undefined;
+  if (!apiProvider || apiProvider === "firstParty") return undefined;
+  return apiProvider === "bedrock"
+    ? { type: "bedrock", label: "Amazon Bedrock" }
+    : { type: "externalProvider", label: toTitleCaseWords(apiProvider) };
 }
 
 /** Probe completion only proves Claude started. Only tokenSource: "none" disproves auth. */

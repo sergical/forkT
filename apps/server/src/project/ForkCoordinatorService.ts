@@ -133,7 +133,7 @@ export const layer = Layer.effect(
           ? undefined
           : recommendForkRoute({
               ...routingInput,
-              providers: yield* refreshForkRoutingProviders(providers, routingInput),
+              ...(yield* refreshForkRoutingProviders(providers, routingInput)),
               now: yield* Clock.currentTimeMillis,
             });
       if (routing?.selection === null)
@@ -243,7 +243,7 @@ export const layer = Layer.effect(
               };
               const route = recommendForkRoute({
                 ...routingInput,
-                providers: yield* refreshForkRoutingProviders(providers, routingInput),
+                ...(yield* refreshForkRoutingProviders(providers, routingInput)),
                 now: yield* Clock.currentTimeMillis,
               });
               if (route.selection === null)

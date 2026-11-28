@@ -490,7 +490,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
                 };
                 return recommendForkRoute({
                   ...routingInput,
-                  providers: yield* refreshForkRoutingProviders(registry, routingInput),
+                  ...(yield* refreshForkRoutingProviders(registry, routingInput)),
                   now: yield* Clock.currentTimeMillis,
                 });
               });

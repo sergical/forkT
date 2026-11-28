@@ -826,6 +826,8 @@ export const layer: Layer.Layer<
           readonly title: string;
           readonly error: Error;
           readonly message?: string;
+          readonly code?: string;
+          readonly retryable?: boolean;
         }) {
           yield* settleRunBeforeStart({
             run,
@@ -844,6 +846,8 @@ export const layer: Layer.Layer<
                 cause: failed.error,
                 message: failed.message ?? startFailureMessage(failed.error),
                 class: "provider_error",
+                code: failed.code,
+                ...(failed.retryable !== undefined && { retryable: failed.retryable }),
               }),
             },
           });
@@ -856,7 +860,7 @@ export const layer: Layer.Layer<
         const settings = yield* Effect.result(serverSettings.getSettings);
         let refusal =
           settings._tag === "Failure"
-            ? "Could not read fork routing settings. Try again after restoring Settings."
+            ? `The server could not read coordinator routing settings for ${run.modelSelection.instanceId} / ${run.modelSelection.model}. Check Settings, then retry.`
             : null;
         if (settings._tag === "Success" && settings.success.forkCoordinatorRouting !== undefined) {
           const routedSender =
@@ -879,6 +883,8 @@ export const layer: Layer.Layer<
         if (refusal !== null) {
           yield* settleStartFailure({
             signal: "fork-subscription-routing",
+            code: "fork_subscription_routing",
+            retryable: true,
             title: "Fork subscription could not start this turn",
             error: new Error(refusal),
           });

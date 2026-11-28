@@ -1920,7 +1920,6 @@ const make = Effect.gen(function* () {
       input.target.providerInstanceId === undefined
         ? { ...input.target, providerInstanceId: inherited.instanceId, model: inherited.model }
         : input.target;
-    const adapterIds = yield* loadOrchestrationCapableInstanceIds();
     const routingInput = {
       providers: input.providers,
       projectId: input.parent.thread.projectId,
@@ -1932,12 +1931,14 @@ const make = Effect.gen(function* () {
       fallbackSelection: resolveProjectSettings(settings, input.parent.thread.projectId).settings
         .fallbackModelSelection,
     };
-    const providers = withWorkspaceModels(
-      yield* refreshForkRoutingProviders(providerRegistry, routingInput),
-      input.cwd,
-    ).filter((provider) => adapterIds.has(provider.instanceId));
+    const refreshed = yield* refreshForkRoutingProviders(providerRegistry, routingInput);
+    const adapterIds = yield* loadOrchestrationCapableInstanceIds();
+    const providers = withWorkspaceModels(refreshed.providers, input.cwd).filter((provider) =>
+      adapterIds.has(provider.instanceId),
+    );
     const recommendation = recommendForkRoute({
       ...routingInput,
+      refreshTimedOut: refreshed.refreshTimedOut,
       providers,
       now: yield* Clock.currentTimeMillis,
     });

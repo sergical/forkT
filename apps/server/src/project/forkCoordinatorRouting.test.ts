@@ -132,6 +132,13 @@ describe("fork subscription routing", () => {
 
   it.each([
     ["exhausted", provider(sol, [weekly("secondary", 100)])],
+    [
+      "using an API key",
+      {
+        ...provider(sol, [weekly("secondary", 46)]),
+        auth: { status: "authenticated", type: "apiKey" },
+      },
+    ],
     ["missing usage", provider(sol)],
     ["stale", provider(sol, [weekly("secondary", 46)], "2026-11-22T09:00:00Z")],
     ["past reset", provider(sol, [{ ...weekly("secondary", 100), resetsAt: checkedAt }])],
@@ -146,12 +153,13 @@ describe("fork subscription routing", () => {
       fallbackSelection: spare,
     };
     expect(recommendForkRoute(input).selection).toEqual(spare);
-    expect(
-      recommendForkRoute({
-        ...input,
-        target: { providerInstanceId: codex, model: sol.model },
-      }).selection,
-    ).toBeNull();
+    const refused = recommendForkRoute({
+      ...input,
+      target: { providerInstanceId: codex, model: sol.model },
+    });
+    expect(refused.selection).toBeNull();
+    expect(refused.reason).toContain(codex);
+    expect(refused.reason).toContain(sol.model);
   });
 
   it("rejects the configured fallback when its instance is excluded", () => {

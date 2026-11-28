@@ -1,3 +1,4 @@
+import type * as ProviderRegistry from "../../provider/ProviderRegistry.ts";
 import * as ProviderRegistryMock from "../../provider/testUtils/providerRegistryMock.ts";
 import * as ForkCoordinatorStore from "../../project/ForkCoordinatorStore.ts";
 import * as ForkMemoryService from "../../project/ForkMemoryService.ts";
@@ -299,6 +300,8 @@ export function layerWithRegistry<Error>(
     readonly runContinuationWorker?: boolean;
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
+    readonly providerRegistry?: Layer.Layer<ProviderRegistry.ProviderRegistry>;
+    readonly serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
     /** Lets a test hold a projection read open to order concurrent dispatches. */
     readonly wrapProjectionStore?: (
       store: ProjectionStore.ProjectionStoreV2Shape,
@@ -359,6 +362,7 @@ export function layerWithRegistry<Error>(
       ServerSettings.layerTest(
         {
           responseStreamingMode: "turn",
+          ...options.serverSettings,
           ...(options.continueThreadsAfterServerUpdate === undefined
             ? {}
             : { continueThreadsAfterServerUpdate: options.continueThreadsAfterServerUpdate }),
@@ -482,7 +486,7 @@ export function layerWithRegistry<Error>(
     ),
   );
   const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pipe(
-    Layer.provide(ProviderRegistryMock.layer([])),
+    Layer.provide(options.providerRegistry ?? ProviderRegistryMock.layer([])),
     Layer.provide(ForkMemoryService.layer.pipe(Layer.provide(layerDatabase))),
     Layer.provide(ForkCoordinatorStore.layer.pipe(Layer.provide(layerDatabase))),
     Layer.provide(
