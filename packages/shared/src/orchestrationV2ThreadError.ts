@@ -44,6 +44,20 @@ export function latestRootProviderFailureItem(
   return latest;
 }
 
+export function isRetryableForkStartFailure(item: ErrorTurnItem | null): boolean {
+  return (
+    item !== null &&
+    item.providerTurnId === null &&
+    item.runId !== null &&
+    (item.failure.code === "fork_subscription_routing" ||
+      item.failure.code === "project_provider_disabled" ||
+      // Returns recorded before routing failures carried a code have the same server signal ID.
+      (item.failure.code === null &&
+        item.id ===
+          `turn-item:run:${encodeURIComponent(item.runId)}:signal:fork-subscription-routing`))
+  );
+}
+
 export function threadErrorSummary(
   failure: OrchestrationV2ProviderFailure | null,
   sessionError: string | null,

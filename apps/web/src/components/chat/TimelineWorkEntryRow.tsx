@@ -8,6 +8,8 @@ import {
 } from "@t3tools/client-runtime/work-log/user-input";
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
+  forkProjectReturnRunId,
+  type OrchestrationV2ProjectedTurnItem,
   type EnvironmentId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -22,6 +24,7 @@ import {
 } from "@t3tools/client-runtime/work-log/presentation";
 import { t3ToolResultIndicatesFailure } from "@t3tools/client-runtime/t3ToolSummary";
 import {
+  turnItemDetailRevision,
   turnItemHasDetail,
   turnItemNeedsDetailFetch,
 } from "@t3tools/client-runtime/work-log/item-detail";
@@ -49,6 +52,8 @@ import {
 import { Button, InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { observeResize } from "../../lib/observeResize";
+import { useTurnItemDetail } from "../../state/queries";
+import { isRetryableForkStartFailure } from "@t3tools/shared/orchestrationV2ThreadError";
 import { useThreadShell } from "../../state/entities";
 import {
   threadReadTargetId,
@@ -235,9 +240,47 @@ type WorkEntryRowProps = {
   onContentReady?: (() => void) | undefined;
 };
 
+function ProjectReturnRow({
+  row,
+  fallback,
+}: {
+  row: OrchestrationV2ProjectedTurnItem;
+  fallback: React.ReactNode;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const result = useTurnItemDetail(
+    {
+      environmentId: ctx.activeThreadEnvironmentId,
+      threadId: row.sourceThreadId,
+      itemId: row.sourceItemId,
+      revision: turnItemDetailRevision(row.item),
+    },
+    ctx.turnItemSource?.detail,
+  );
+  const item = result.data?.item;
+  if (item?.type !== "notification" || !item.detail) return fallback;
+  return (
+    <ChatMarkdown
+      text={item.detail}
+      cwd={ctx.markdownCwd}
+      threadRef={ctx.threadRef ?? undefined}
+      headingLevelOffset={MESSAGE_HEADING_LEVEL}
+      onImageExpand={ctx.onImageExpand}
+    />
+  );
+}
+
 export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEntryRowProps) {
   const ctx = use(TimelineRowCtx);
-  const item = props.workEntry.projectedItem?.item;
+  const row = props.workEntry.projectedItem;
+  const item = row?.item;
+  if (
+    ctx.turnItemSource === undefined &&
+    row?.visibility === "local" &&
+    forkProjectReturnRunId(row.item) !== null
+  ) {
+    return <ProjectReturnRow row={row} fallback={<WorkEntryLogRow {...props} />} />;
+  }
   const childThreadId =
     item?.type === "notification" ? notificationChildThreadId(item.source) : undefined;
   if (item?.type !== "notification" || childThreadId === undefined) {
@@ -365,6 +408,12 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       failureItem.failure.code === ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE
         ? failureItem.runId
         : null;
+    const retry =
+      retryRunId !== null && onRetryWorkspacePreparation
+        ? () => onRetryWorkspacePreparation(retryRunId)
+        : isRetryableForkStartFailure(failureItem) && ctx.startRetry?.runId === failureItem.runId
+          ? ctx.startRetry.retry
+          : null;
     return (
       <WorkLogRow
         data-v2-item-type="error"
@@ -407,14 +456,9 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             </Button>
           </div>
         ) : null}
-        {retryRunId !== null && onRetryWorkspacePreparation ? (
+        {retry ? (
           <div className="ms-7 pb-1">
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              onClick={() => onRetryWorkspacePreparation(retryRunId)}
-            >
+            <Button type="button" size="xs" variant="outline" onClick={retry}>
               <RotateCcwIcon aria-hidden />
               <T>Retry</T>
             </Button>

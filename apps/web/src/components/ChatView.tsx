@@ -934,6 +934,7 @@ export default function ChatView(props: ChatViewProps) {
       ? null
       : deriveResumableRunId(serverProjection, serverRuntime);
   const canResume =
+    canOperateThread &&
     serverProjection !== null &&
     canResumeThread(serverProjection, resumableRunId, hasHeldQueuedRuns);
   const parentSubagentThreadId =
@@ -3753,6 +3754,17 @@ export default function ChatView(props: ChatViewProps) {
                   }
                   worktreeSetup={worktreeSetup}
                   onCancelWorktreeSetup={onCancelWorktreeSetupStable}
+                  startRetry={
+                    canResume &&
+                    resumableRunId &&
+                    !isResuming &&
+                    !isSendBusy &&
+                    !isRevertingCheckpoint &&
+                    !threadDetailLoading &&
+                    !activeEnvironmentUnavailable
+                      ? { runId: resumableRunId, retry: onComposerResumeStable }
+                      : null
+                  }
                   retryableWorkspacePreparationRunIds={retryableWorkspacePreparationRunIds}
                   onRetryWorkspacePreparation={onRetryWorkspacePreparationStable}
                   {...(draftId

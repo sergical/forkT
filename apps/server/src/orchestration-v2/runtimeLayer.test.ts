@@ -1373,6 +1373,7 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
 });
 
 const layerSharedApplicationDataPlaneTest = Layer.mergeAll(
+  ThreadCommandExecutor.layer,
   layerProjectionReplayTest,
   layerRuntimeTestWithProviderRegistry.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
   RuntimeLayer.layerProjectService,
@@ -1410,7 +1411,7 @@ const layerSharedApplicationDataPlaneTest = Layer.mergeAll(
   Layer.provideMerge(SqlitePersistence.layerMemory),
   Layer.provide(layerCheckpointStoreTest),
   Layer.provide(layerServerConfig),
-  Layer.provide(ServerSettings.layerTest()),
+  Layer.provideMerge(ServerSettings.layerTest()),
   Layer.provide(layerTestProviderInstanceRegistry),
   Layer.provide(layerGitWorkflowTest),
   Layer.provide(layerPlatformTest),
@@ -12617,6 +12618,31 @@ it.layer(layerSharedApplicationDataPlaneTest)("main coordinator project handoff"
           projection.messages[0]!.text,
           McpContext.threadLinkFor(scope, main, "Main coordinator"),
         );
+        const mainRun = (yield* orchestrator.getThreadProjection(main)).runs[0]!;
+        yield* (yield* EventSink.EventSinkV2).write({
+          commandId: CommandId.make("finish-main-" + kind),
+          events: [
+            {
+              id: EventId.make("finish-main-" + kind),
+              type: "run.updated",
+              threadId: main,
+              runId: mainRun.id,
+              occurredAt: now,
+              payload: { ...mainRun, status: "completed", completedAt: now },
+            },
+          ],
+        });
+        const settings = yield* ServerSettings.ServerSettingsService;
+        const mainProject = ProjectId.make("scratch-" + kind);
+        if (kind === "writing") {
+          yield* settings.updateSettings({
+            projectSettingsOverrides: {
+              [mainProject]: {
+                providerInstances: { [modelSelection.instanceId]: { enabled: false } },
+              },
+            },
+          });
+        }
         yield* Effect.all(
           [ProjectHandoffReturns.reconcile(destination), ProjectHandoffReturns.reconcile()],
           { concurrency: 2 },
@@ -12627,6 +12653,60 @@ it.layer(layerSharedApplicationDataPlaneTest)("main coordinator project handoff"
         assert.lengthOf(returned, 1);
         assert.include(returned[0]!.text, receipt.link);
         assert.include(returned[0]!.text, report);
+        const mainView = yield* orchestrator.getThreadProjection(main);
+        const notice = mainView.visibleTurnItems.find(
+          ({ item }) => item.type === "notification" && item.runId === returned[0]!.runId,
+        );
+        assert.isDefined(notice);
+        const { item } =
+          yield* (yield* ThreadManagementService.ThreadManagementService).getTurnItem({
+            threadId: main,
+            itemId: notice.sourceItemId,
+          });
+        assert.equal(item?.type === "notification" && item.detail, returned[0]!.text);
+        if (kind === "writing") {
+          const callback = mainView.runs.find((run) => run.id === returned[0]!.runId)!;
+          assert.equal(callback.status, "failed");
+          const sql = yield* SqlClient.SqlClient;
+          assert.isEmpty(
+            yield* sql`SELECT effect_id FROM orchestration_v2_effect_outbox WHERE command_id = ${"project-handoff-return:" + run.id}`,
+          );
+          const retry = {
+            type: "message.dispatch" as const,
+            commandId: CommandId.make("retry-return"),
+            threadId: main,
+            messageId: MessageId.make("retry-return"),
+            manualContinuationOfRunId: callback.id,
+            text: "",
+            attachments: [],
+            dispatchMode: { type: "start_immediately" as const },
+            createdBy: "user" as const,
+            creationSource: "web" as const,
+          };
+          const threads = yield* ThreadManagementService.ThreadManagementService;
+          assert.equal(
+            (yield* threads.dispatch(retry).pipe(Effect.flip))._tag,
+            "ThreadManagementProviderInstanceDisabledError",
+          );
+          yield* settings.updateSettings({
+            projectSettingsOverrides: {
+              [mainProject]: {
+                providerInstances: { [modelSelection.instanceId]: { enabled: true } },
+              },
+            },
+          });
+          yield* threads.dispatch(retry);
+          yield* ProjectHandoffReturns.reconcile(destination);
+          const resumed = yield* orchestrator.getThreadProjection(main);
+          assert.lengthOf(
+            resumed.runs.filter((run) => run.manualContinuationOfRunId === callback.id),
+            1,
+          );
+          assert.lengthOf(
+            resumed.messages.filter((message) => message.senderThreadId === destination),
+            1,
+          );
+        }
       }).pipe(
         Effect.provide(
           Coordinator.layer.pipe(
@@ -14182,7 +14262,7 @@ it.layer(layerSharedApplicationDataPlaneTest)("shared application data plane", (
 });
 
 it.layer(layerTest)("usage-limit recovery", (it) => {
-  it.effect.each(["interrupted", "usage_limit"] as const)(
+  it.effect.each(["interrupted", "usage_limit", "legacy_routing_refusal"] as const)(
     "manually resumes an %s run ahead of its queued message only once",
     (reason) =>
       Effect.gen(function* () {
@@ -14263,8 +14343,8 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
           ],
         });
         let scheduledResume: ReturnType<typeof limitRecoveryCommand> = null;
-        if (reason === "usage_limit") {
-          const resetAt = DateTime.formatIso(DateTime.add(now, { minutes: 1 }));
+        const resetAt = DateTime.formatIso(DateTime.add(now, { minutes: 1 }));
+        if (reason !== "interrupted") {
           yield* events.write({
             events: [
               {
@@ -14273,7 +14353,11 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
                 threadId,
                 occurredAt: now,
                 payload: {
-                  id: TurnItemId.make(`manual-resume:error:${reason}`),
+                  id: TurnItemId.make(
+                    reason === "usage_limit"
+                      ? `manual-resume:error:${reason}`
+                      : `turn-item:run:${encodeURIComponent(source.id)}:signal:fork-subscription-routing`,
+                  ),
                   type: "error",
                   threadId,
                   runId: source.id,
@@ -14284,21 +14368,29 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
                   parentItemId: null,
                   ordinal: 2,
                   status: "failed",
-                  title: "Usage limit reached",
+                  title:
+                    reason === "usage_limit"
+                      ? "Usage limit reached"
+                      : "Subscription routing unavailable",
                   startedAt: now,
                   completedAt: now,
                   updatedAt: now,
                   failure: {
-                    class: "usage_limit",
-                    message: "Plan limit reached.",
-                    code: "usageLimitExceeded",
+                    class: reason === "usage_limit" ? "usage_limit" : "provider_error",
+                    message:
+                      reason === "usage_limit"
+                        ? "Plan limit reached."
+                        : "Requested fork target is excluded, unavailable, unverified, or out of allowance.",
+                    code: reason === "usage_limit" ? "usageLimitExceeded" : null,
                     retryable: null,
-                    resetAt,
+                    ...(reason === "usage_limit" ? { resetAt } : {}),
                   },
                 },
               },
             ],
           });
+        }
+        if (reason === "usage_limit") {
           const shell = (yield* orchestrator.getShellSnapshot()).threads.find(
             (thread) => thread.id === threadId,
           )!;

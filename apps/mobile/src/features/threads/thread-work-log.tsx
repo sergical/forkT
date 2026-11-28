@@ -1,5 +1,7 @@
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { Button } from "../../components/ui/Button";
+import { ThreadResumeContext } from "./resume-thread";
+import { isRetryableForkStartFailure } from "@t3tools/shared/orchestrationV2ThreadError";
 import { ThreadSubagentGroup } from "./thread-subagent-group";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
@@ -25,6 +27,7 @@ import type { LegendListRef } from "@legendapp/list/react-native";
 import { AnimatedLegendList } from "@legendapp/list/reanimated";
 import { useIsFocused } from "@react-navigation/native";
 import {
+  use,
   useEffect,
   useId,
   useLayoutEffect,
@@ -47,6 +50,7 @@ import {
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
+  forkProjectReturnRunId,
   type EnvironmentId,
   type RunId,
   type ThreadId,
@@ -913,11 +917,19 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
   const streamsOutput =
     useCommandOutputStreaming(props.environmentId) &&
     row.projectedItem.item.type === "command_execution";
+  const projectReturn =
+    row.projectedItem.visibility === "local" &&
+    forkProjectReturnRunId(row.projectedItem.item) !== null;
+  const resume = use(ThreadResumeContext);
   const fetchedDetail = useTurnItemDetail(
-    expanded && row.fetchesDetail && !streamsOutput
+    projectReturn || (expanded && row.fetchesDetail && !streamsOutput)
       ? { environmentId: props.environmentId, row: row.projectedItem }
       : null,
   );
+  const report = fetchedDetail.data?.item;
+  if (projectReturn && report?.type === "notification" && report.detail) {
+    return <View>{props.renderReasoning(report.detail)}</View>;
+  }
   const failureItem = row.projectedItem.item;
   if (failureItem.type === "error" && failureItem.status === "failed") {
     const warning = failureItem.failure.class === "usage_limit";
@@ -989,6 +1001,18 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
             <Text selectable className="ml-7 text-sm text-foreground">
               {failureItem.failure.message}
             </Text>
+          ) : null}
+          {resume &&
+          resume.runId === failureItem.runId &&
+          isRetryableForkStartFailure(failureItem) ? (
+            <View className="ml-7 mt-2">
+              <Button
+                label={gt("Retry")}
+                tone="secondary"
+                icon="arrow.clockwise"
+                onPress={resume.retry}
+              />
+            </View>
           ) : null}
           {failureItem.failure.code === ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE &&
           failureItem.runId !== null ? (

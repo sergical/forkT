@@ -21,6 +21,8 @@ import {
   OrchestrationV2ForceStopThreadError,
   type OrchestrationV2ForceStopThreadInput,
   type OrchestrationV2ForceStopThreadResult,
+  forkProjectReturnMessageId,
+  forkProjectReturnRunId,
   type ModelSelection,
   type OrchestrationV2Actor,
   type OrchestrationV2Command,
@@ -1966,11 +1968,32 @@ const make = Effect.gen(function* () {
         );
       },
     ),
-    getTurnItem: Effect.fn("ThreadManagementService.getTurnItem")(function (input) {
-      return ensureProjectionTranscript(input.threadId).pipe(
-        Effect.andThen(orchestrator.getTurnItem(input)),
-        Effect.map((item) => ({ item: item === null ? null : projectTurnItemForDetail(item) })),
-      );
+    getTurnItem: Effect.fn("ThreadManagementService.getTurnItem")(function* (input) {
+      yield* ensureProjectionTranscript(input.threadId);
+      const item = yield* orchestrator.getTurnItem(input);
+      const projectRunId = item && forkProjectReturnRunId(item);
+      if (item?.type === "notification" && projectRunId !== null) {
+        const id = forkProjectReturnMessageId(projectRunId);
+        const message = (yield* orchestrator.getMessagesById(input.threadId, [id])).get(id);
+        if (
+          message?.createdBy === "agent" &&
+          message.creationSource === "server" &&
+          message.senderThreadId !== undefined &&
+          message.runId === item.runId &&
+          (yield* orchestrator
+            .projectHandoffSource(message.senderThreadId, projectRunId)
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new Orchestrator.OrchestratorProjectionError({ threadId: input.threadId, cause }),
+              ),
+            )) === input.threadId
+        ) {
+          return { item: { ...item, detail: message.text } };
+        }
+        return { item: null };
+      }
+      return { item: item === null ? null : projectTurnItemForDetail(item) };
     }),
     getThreadRecords: Effect.fn("ThreadManagementService.getThreadRecords")(
       function (threadId, fields, filter) {

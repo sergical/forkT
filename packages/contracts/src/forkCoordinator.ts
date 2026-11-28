@@ -1,5 +1,13 @@
 import * as Schema from "effect/Schema";
-import { CommandId, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  CommandId,
+  MessageId,
+  ProjectId,
+  RunId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
+import type { OrchestrationV2TurnItem } from "./orchestrationV2.ts";
 import { ModelSelection } from "./modelSelection.ts";
 
 export const ForkCoordinatorOpenInput = Schema.Struct({
@@ -20,6 +28,29 @@ export type ForkCoordinatorOpenInput = typeof ForkCoordinatorOpenInput.Type;
 /** The main coordinator's thread is `fork:global:<generation>`; see ForkCoordinatorStore. */
 export const isForkMainCoordinatorThreadId = (threadId: string) =>
   threadId.startsWith("fork:global:");
+
+const projectReturnPrefix = "message:project-handoff-return:";
+const projectReturnItemPrefix = `turn-item:message:${encodeURIComponent(projectReturnPrefix)}`;
+
+export const forkProjectReturnMessageId = (runId: RunId) =>
+  MessageId.make(projectReturnPrefix + runId);
+
+/** Legacy and new returns share this stable notification ID. Only the server can verify the handoff. */
+export function forkProjectReturnRunId(item: OrchestrationV2TurnItem): RunId | null {
+  if (
+    item.type !== "notification" ||
+    item.source.kind !== "system" ||
+    !isForkMainCoordinatorThreadId(item.threadId) ||
+    !item.id.startsWith(projectReturnItemPrefix)
+  )
+    return null;
+  try {
+    const id = decodeURIComponent(item.id.slice(projectReturnItemPrefix.length));
+    return id.trim() ? RunId.make(id) : null;
+  } catch {
+    return null;
+  }
+}
 
 /** A project coordinator's thread is `fork:project:<projectId>:<generation>`. */
 export const forkCoordinatorProjectId = (threadId: string): string | null => {

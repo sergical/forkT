@@ -1,7 +1,10 @@
 import {
   CommandId,
+  EventId,
+  type OrchestrationV2Notification,
+  type MessageId,
   forkCoordinatorProjectId,
-  MessageId,
+  forkProjectReturnMessageId,
   type EnvironmentId,
   type RunId,
   type ProviderThreadId,
@@ -13,6 +16,9 @@ import {
   SUBAGENT_RESULT_TURN_ITEM_TYPES,
   subagentResultForRun,
 } from "@t3tools/provider-core/server/subagentProjection";
+import { derive } from "@t3tools/provider-core/server/IdAllocator";
+import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -20,6 +26,8 @@ import * as Schedule from "effect/Schedule";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 import * as CommandReceipts from "../orchestration-v2/CommandReceiptStore.ts";
+import * as EventSink from "../orchestration-v2/EventSink.ts";
+import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import {
   delegatedTaskAwaitsWork,
@@ -28,6 +36,7 @@ import {
 } from "../orchestration-v2/RestartBackgroundNote.ts";
 import {
   ThreadManagementService,
+  type ThreadManagementProviderInstanceDisabledError,
   isTerminalRunStatus,
 } from "../orchestration-v2/ThreadManagementService.ts";
 import { forkParked } from "../serverActivation.ts";
@@ -128,6 +137,141 @@ const resultFor = Effect.fn("ProjectHandoffReturns.resultFor")(function* (handof
   };
 });
 
+// A disabled project instance refuses dispatch before its message exists. Commit the same
+// receipt and input as a failed run, without creating a provider session or a start effect.
+const recordDisabledReturn = Effect.fn("ProjectHandoffReturns.recordDisabledReturn")(function* (
+  command: {
+    commandId: CommandId;
+    threadId: ThreadId;
+    messageId: MessageId;
+    senderThreadId: ThreadId;
+    text: string;
+    notification: OrchestrationV2Notification;
+  },
+  cause: ThreadManagementProviderInstanceDisabledError,
+) {
+  const { threadId, commandId, messageId, notification } = command;
+  const executor = yield* ThreadCommandExecutor.ThreadCommandExecutor;
+  return yield* executor.withLock(
+    threadId,
+    Effect.gen(function* () {
+      const thread = yield* (yield* OrchestratorV2).getThreadShell(threadId);
+      if (
+        !thread ||
+        thread.deletedAt ||
+        thread.archivedAt ||
+        thread.modelSelection.instanceId !== cause.instanceId
+      )
+        return false;
+      const sql = yield* SqlClient.SqlClient;
+      const [next] = yield* sql<{ ordinal: number }>`SELECT COALESCE(MAX(ordinal), 0) + 1 AS ordinal
+      FROM orchestration_v2_projection_runs WHERE thread_id = ${threadId}`;
+      const ordinal = next!.ordinal;
+      const runId = derive.run({ threadId, ordinal });
+      const now = yield* DateTime.now;
+      const event = { threadId, runId, occurredAt: now, providerInstanceId: cause.instanceId };
+      const item = {
+        threadId,
+        runId,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        startedAt: now,
+        completedAt: now,
+        updatedAt: now,
+      };
+      const { receipt } = yield* (yield* EventSink.EventSinkV2).commitCommand({
+        threadId,
+        commandId,
+        commandType: "message.dispatch",
+        acceptedAt: now,
+        effects: [],
+        events: [
+          {
+            ...event,
+            id: EventId.make(`${commandId}:run`),
+            type: "run.created",
+            payload: {
+              id: runId,
+              threadId,
+              ordinal,
+              providerInstanceId: cause.instanceId,
+              modelSelection: thread.modelSelection,
+              userMessageId: messageId,
+              providerThreadId: null,
+              rootNodeId: null,
+              activeAttemptId: null,
+              status: "failed",
+              requestedAt: now,
+              startedAt: null,
+              completedAt: now,
+              checkpointId: null,
+              contextHandoffId: null,
+            },
+          },
+          {
+            ...event,
+            id: EventId.make(`${commandId}:message`),
+            type: "message.updated",
+            payload: {
+              threadId,
+              runId,
+              id: messageId,
+              nodeId: null,
+              role: "user",
+              createdBy: "agent",
+              creationSource: "server",
+              senderThreadId: command.senderThreadId,
+              text: command.text,
+              notification,
+              attachments: [],
+              streaming: false,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+          {
+            ...event,
+            id: EventId.make(`${commandId}:notice`),
+            type: "turn-item.updated",
+            payload: {
+              ...item,
+              id: derive.userTurnItem({ messageId }),
+              type: "notification",
+              ordinal: 1,
+              status: "completed",
+              title: notification.summary,
+              ...notification,
+            },
+          },
+          {
+            ...event,
+            id: EventId.make(`${commandId}:error`),
+            type: "turn-item.updated",
+            payload: {
+              ...item,
+              id: derive.runSignalTurnItem({ runId, signal: "project-provider-disabled" }),
+              type: "error",
+              ordinal: 2,
+              status: "failed",
+              title: "Provider disabled for this project",
+              failure: makeProviderFailure({
+                class: "provider_error",
+                code: "project_provider_disabled",
+                retryable: true,
+                message: `${cause.message} Enable this provider or choose an enabled provider, then retry.`,
+              }),
+            },
+          },
+        ],
+      });
+      return receipt.status === "accepted" && receipt.threadId === threadId;
+    }),
+  );
+});
+
 const deliver = Effect.fn("ProjectHandoffReturns.deliver")(function* (row: Handoff) {
   const sql = yield* SqlClient.SqlClient;
   const markDelivered = sql`UPDATE fork_project_handoff_returns SET delivered = 1 WHERE run_id = ${row.run_id}`;
@@ -150,11 +294,11 @@ const deliver = Effect.fn("ProjectHandoffReturns.deliver")(function* (row: Hando
     { environmentId: row.environment_id, threadId: row.project_thread_id },
     "Project coordinator",
   );
-  yield* threads.dispatch({
+  const command = {
     type: "message.dispatch",
     commandId,
     threadId: row.source_thread_id,
-    messageId: MessageId.make(`message:project-handoff-return:${row.run_id}`),
+    messageId: forkProjectReturnMessageId(row.run_id),
     text: `${result.summary} from ${link}.\n\n${result.detail}`,
     notification: { source: { kind: "system" }, outcome: result.outcome, summary: result.summary },
     senderThreadId: row.project_thread_id,
@@ -162,8 +306,15 @@ const deliver = Effect.fn("ProjectHandoffReturns.deliver")(function* (row: Hando
     dispatchMode: { type: "queue_after_active" },
     createdBy: "agent",
     creationSource: "server",
-  });
-  yield* markDelivered;
+  } as const;
+  const saved = yield* threads.dispatch(command).pipe(
+    Effect.as(true),
+    Effect.catchTags({
+      ThreadManagementProviderInstanceDisabledError: (cause) =>
+        recordDisabledReturn(command, cause),
+    }),
+  );
+  if (saved) yield* markDelivered;
 });
 
 export const reconcile = Effect.fn("ProjectHandoffReturns.reconcile")(function* (
@@ -209,4 +360,4 @@ export const layer = Layer.effectDiscard(
       ),
     );
   }),
-).pipe(Layer.provide(CommandReceipts.layer));
+).pipe(Layer.provide(Layer.merge(CommandReceipts.layer, ThreadCommandExecutor.layer)));

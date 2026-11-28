@@ -1,3 +1,4 @@
+import { createContext } from "react";
 import type {
   ResumeThreadQueueInput,
   SetThreadInteractionModeInput,
@@ -14,6 +15,11 @@ import type {
   RuntimeMode,
   ThreadId,
 } from "@t3tools/contracts";
+
+export const ThreadResumeContext = createContext<{
+  runId: RunId;
+  retry: () => Promise<void>;
+} | null>(null);
 
 type Command<Input, E> = (request: {
   readonly environmentId: EnvironmentId;

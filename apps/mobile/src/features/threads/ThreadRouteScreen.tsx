@@ -122,7 +122,7 @@ import {
   threadRouteOpensDraft,
 } from "./thread-route-hydration";
 import { ThreadHeader } from "./ThreadHeader";
-import { resumeThread } from "./resume-thread";
+import { resumeThread, ThreadResumeContext } from "./resume-thread";
 import {
   useAndroidWorkspaceBack,
   useWorkspaceBackNavigation,
@@ -704,8 +704,15 @@ function ThreadRouteContent(
     });
   };
 
+  const resumingThread = useRef<ThreadId | null>(null);
   const handleResumeQueue = async () => {
-    if (!selectedThread) return;
+    if (
+      !selectedThread ||
+      resumingThread.current === selectedThread.id ||
+      !readEnvironmentScope(selectedThread.environmentId, AuthOrchestrationOperateScope)
+    )
+      return;
+    resumingThread.current = selectedThread.id;
     const result = await resumeThread({
       thread: selectedThread,
       resumableRunId: composer.resumableRunId,
@@ -720,6 +727,7 @@ function ThreadRouteContent(
       startTurn: continueThreadRun,
       resumeQueue: resumeThreadQueue,
     });
+    if (resumingThread.current === selectedThread.id) resumingThread.current = null;
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
       Dialog.alert(
@@ -1029,8 +1037,15 @@ function ThreadRouteContent(
   }
 
   const serverConfig = routeEnvironmentRuntime?.serverConfig ?? null;
+  const canResume = canOperateThread && composer.canResume && routeConnectionState === "connected";
   return (
-    <>
+    <ThreadResumeContext
+      value={
+        canResume && composer.resumableRunId
+          ? { runId: composer.resumableRunId, retry: handleResumeQueue }
+          : null
+      }
+    >
       {inspectorHeader}
       {!props.inspectorPresentation && inspectorContent ? (
         <Inspector
@@ -1139,7 +1154,7 @@ function ThreadRouteContent(
         onRemoveDraftImage={composer.onRemoveDraftImage}
         serverConfig={serverConfig}
         onStopThread={awaitingBootstrapTurn ? handleCancelWorktreeSetup : handleStopThread}
-        onResumeQueue={composer.canResume ? handleResumeQueue : null}
+        onResumeQueue={canResume ? handleResumeQueue : null}
         onSendMessage={composer.onSendMessage}
         offersSideChat={composer.sideChatUnavailableReason === null}
         onSendCommand={composer.onSendCommand}
@@ -1151,7 +1166,7 @@ function ThreadRouteContent(
         onSubmitUserInput={requests.onSubmitUserInput}
         onDismissUserInput={requests.onDismissUserInput}
       />
-    </>
+    </ThreadResumeContext>
   );
 }
 

@@ -261,6 +261,7 @@ interface MessagesTimelineProps {
   providerStarting?: NonNullable<ThreadRunSummary["providerStarting"]> | null;
   worktreeSetup?: WorktreeSetupSnapshot | null;
   onCancelWorktreeSetup?: () => void;
+  startRetry?: TimelineRowSharedState["startRetry"];
   retryableWorkspacePreparationRunIds?: ReadonlySet<RunId>;
   onRetryWorkspacePreparation?: (runId: RunId) => void;
   onWorktreeSetupWorkLocally?: () => void;
@@ -390,6 +391,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   worktreeSetup = null,
   footer = null,
   onCancelWorktreeSetup,
+  startRetry = null,
   retryableWorkspacePreparationRunIds = EMPTY_RUN_IDS,
   onRetryWorkspacePreparation,
   onWorktreeSetupWorkLocally,
@@ -1245,6 +1247,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       scheduleDisclosureReveal();
     },
     onCancelWorktreeSetup: onCancelWorktreeSetup ?? null,
+    startRetry,
     retryableWorkspacePreparationRunIds,
     onRetryWorkspacePreparation: onRetryWorkspacePreparation ?? null,
     onWorktreeSetupWorkLocally: onWorktreeSetupWorkLocally ?? null,

@@ -755,7 +755,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   layerThreadPullRequestWorker,
   KeepAwake.layer,
   DelegatedTaskAnalytics.layer,
-  ProjectHandoffReturns.layer,
+  ProjectHandoffReturns.layer.pipe(Layer.provide(RuntimeLayer.layerEventSink)),
   Layer.effectDiscard(
     Effect.gen(function* () {
       const service = yield* PullRequestSyncReactor.PullRequestSyncReactor;
