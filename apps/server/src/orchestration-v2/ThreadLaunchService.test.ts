@@ -3636,8 +3636,7 @@ it.live.each(["member repositories", "single repository"])(
             ProjectionStore.layer,
             ProjectStore.layer,
             pullRequests,
-            layerGit,
-          ),
+          ).pipe(Layer.provideMerge(layerGit)),
         ),
       );
       const layer = Layer.merge(
