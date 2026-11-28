@@ -412,6 +412,11 @@ export function summarizeT3ToolCalls(
           );
       break;
     }
+    case "question-share":
+      label = done
+        ? resolve(msg("Updated who will receive the answer"))
+        : resolve(msg("Tried to update who will receive the answer"));
+      break;
     case "question-respond": {
       const count = countEntities(entityIds("requestId"));
       label = done
