@@ -1,5 +1,10 @@
 import { tokenizeCliArgs } from "@t3tools/shared/cliArgs";
 
+// Holds T3 tools Codex must call directly, never from Code Mode. Calls arrive as
+// `t3-code-direct.<tool>`; t3McpToolPresentation.ts must keep resolving that form.
+export const CODEX_T3_DIRECT_MCP_SERVER = "t3-code-direct";
+export const CODEX_DIRECT_ONLY_T3_TOOLS = ["t3_thread_wait", "delegate_task"];
+
 const T3CODE_CODEX_LAUNCH_ARGS_ENV = "T3CODE_CODEX_LAUNCH_ARGS";
 
 export const resolveCodexLaunchArgs = (

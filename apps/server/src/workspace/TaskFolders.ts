@@ -74,6 +74,7 @@ export interface TaskFolderPlan {
   readonly repositories: ReadonlyArray<ProjectTrackedFolder>;
   /** Every tracked Git folder. None is linked into a plain project folder: a link is the original. */
   readonly trackedRepositories: ReadonlyArray<string>;
+  readonly requireExactSelection?: boolean;
 }
 
 interface TaskFolderRemoval {
@@ -99,6 +100,7 @@ export class TaskFolders extends Context.Service<
     readonly plan: (input: {
       readonly projectId: ProjectId;
       readonly repositories?: ReadonlyArray<{ readonly path: string }> | undefined;
+      readonly requireExactSelection?: boolean | undefined;
     }) => Effect.Effect<TaskFolderPlan | null, TaskFolderError>;
     /**
      * Creates the folder and every worktree on one branch name, which is `branch` unless a
@@ -157,6 +159,12 @@ export class TaskFolders extends Context.Service<
       readonly repositoryPath: string;
       readonly startFromOrigin?: boolean | undefined;
     }) => Effect.Effect<TaskFolder, TaskFolderError>;
+    /** Resolves a repository choice to a checkout still registered to this task folder. */
+    readonly checkoutPath: (
+      folder: TaskFolder,
+      worktreePath: string,
+      repositoryPath: string | undefined,
+    ) => Effect.Effect<string, TaskFolderError>;
     /** The task folder that is, or contains, `target`. */
     readonly find: (target: string) => Effect.Effect<TaskFolder | null, TaskFolderError>;
     /**
@@ -542,6 +550,42 @@ const make = Effect.gen(function* () {
       ? resolved
       : null;
   });
+  const checkoutsOf = (taskFolder: TaskFolder): ReadonlyArray<TaskFolderCheckout> => [
+    ...taskFolder.repositories,
+    ...(taskFolder.projectIsWorktree
+      ? [{ worktreePath: taskFolder.projectPath, repositoryPath: taskFolder.projectRoot }]
+      : []),
+  ];
+  const checkoutPath: TaskFolders["Service"]["checkoutPath"] = Effect.fn(
+    "TaskFolders.checkoutPath",
+  )(function* (folder, worktreePath, repositoryPath) {
+    const checkouts = checkoutsOf(folder);
+    const current = checkouts.find((checkout) => checkout.worktreePath === worktreePath);
+    const candidates = current && worktreePath !== folder.projectPath ? [current] : checkouts;
+    const selected =
+      repositoryPath === undefined
+        ? candidates.length === 1
+          ? candidates[0]
+          : undefined
+        : candidates.find(
+            (repo) =>
+              repo.worktreePath === repositoryPath || repo.repositoryPath === repositoryPath,
+          );
+    if (selected === undefined)
+      return yield* new TaskFolderError({
+        operation: "read",
+        detail:
+          candidates.length === 0
+            ? "This worktree has no prepared repository."
+            : `Choose a repositoryPath from this thread's checkouts: ${candidates.map((repo) => repo.worktreePath).join(", ")}`,
+      });
+    if ((yield* linkedGitDir(selected)) === null)
+      return yield* new TaskFolderError({
+        operation: "read",
+        detail: `${selected.worktreePath} is no longer a worktree of ${selected.repositoryPath}.`,
+      });
+    return selected.worktreePath;
+  });
   const unadoptable = Effect.fnUntraced(function* (checkout: TaskFolderCheckout, branch: string) {
     const resolved = yield* linkedGitDir(checkout);
     if (resolved === null)
@@ -646,6 +690,15 @@ const make = Effect.gen(function* () {
         git.hasCommit({ cwd: folder.path, refName: "HEAD" }).pipe(Effect.orElseSucceed(() => true)),
       { concurrency: REPOSITORY_CONCURRENCY },
     );
+    if (input.requireExactSelection && input.repositories !== undefined) {
+      const prepared = new Set(repositories.map((folder) => folder.path));
+      const missing = input.repositories.find((folder) => !prepared.has(path.resolve(folder.path)));
+      if (missing)
+        return yield* new TaskFolderError({
+          operation: "plan",
+          detail: `"${missing.path}" cannot get a separate worktree. Select a repository with a commit. For a submodule, select its parent repository.`,
+        });
+    }
     return {
       projectId: project.projectId,
       projectRoot,
@@ -653,6 +706,9 @@ const make = Effect.gen(function* () {
       anchor,
       repositories: repositories.map(({ name, path: folderPath }) => ({ name, path: folderPath })),
       trackedRepositories: reachable.map((folder) => folder.path),
+      ...(input.requireExactSelection && input.repositories !== undefined
+        ? { requireExactSelection: true }
+        : {}),
     };
   });
 
@@ -911,12 +967,7 @@ const make = Effect.gen(function* () {
         reason: layout.refusal,
       });
     } else if (layout !== null) {
-      const checkouts = [
-        ...taskFolder.repositories,
-        ...(taskFolder.projectIsWorktree
-          ? [{ worktreePath: taskFolder.projectPath, repositoryPath: taskFolder.projectRoot }]
-          : []),
-      ];
+      const checkouts = checkoutsOf(taskFolder);
       const allGo = Effect.gen(function* () {
         for (const checkout of checkouts) {
           if (!(yield* exists(checkout.worktreePath))) continue;
@@ -1224,6 +1275,19 @@ const make = Effect.gen(function* () {
               operation: "create",
               detail: `The project's worktree layout command must make each checkout with git worktree add on the thread's branch: ${refused.join("; ")}.`,
             });
+          }
+          if (taskPlan.requireExactSelection) {
+            const selected = new Set(taskPlan.repositories.map((folder) => folder.path));
+            if (
+              selected.size !== created.length ||
+              created.some((folder) => !selected.has(folder.repositoryPath))
+            ) {
+              return yield* new TaskFolderError({
+                operation: "create",
+                detail:
+                  "The project's worktree layout command must prepare the selected member repositories for this worker.",
+              });
+            }
           }
           const taskFolder: TaskFolder = {
             ...current(),
@@ -1722,6 +1786,7 @@ const make = Effect.gen(function* () {
     createForProjectFolder,
     addRepository,
     find: store.findContaining,
+    checkoutPath,
     remove,
     removeIfTaskFolder,
     renameBranch,

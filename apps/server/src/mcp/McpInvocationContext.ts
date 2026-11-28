@@ -168,6 +168,7 @@ export interface McpInvocationScope {
   readonly origin?: string | undefined;
   /** False when the calling thread's project is on no forge T3 reads; `/mcp` reads it per request. */
   readonly forge?: boolean;
+  readonly hasPreparedRepositories?: boolean;
 }
 
 /**
@@ -264,6 +265,12 @@ export const hiddenWithoutForge = (): boolean => {
   const fiber = Fiber.getCurrent();
   const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
   return scope?.forge !== false;
+};
+
+export const canCreatePullRequest = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return scope?.forge !== false || scope.hasPreparedRepositories === true;
 };
 
 export type McpCapabilityError<C extends McpCapability> = C extends "preview"

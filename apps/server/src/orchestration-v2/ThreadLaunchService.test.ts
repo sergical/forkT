@@ -1,3 +1,18 @@
+import { McpSchema, McpServer } from "effect/ai";
+import * as McpHttpServer from "../mcp/McpHttpServer.ts";
+import * as Invocation from "../mcp/McpInvocationContext.ts";
+import * as PeerForwarding from "../peer/PeerForwarding.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerLinkRequests from "../peer/PeerLinkRequests.ts";
+import { SourceControlProvider } from "@t3tools/source-control-core/server/SourceControlProvider";
+import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
+import * as ProjectionStore from "./ProjectionStore.ts";
+import * as GitManager from "../git/GitManager.ts";
+import * as PullRequests from "../pullRequest/PullRequestService.ts";
+import * as PullRequestWatch from "../pullRequest/PullRequestWatchService.ts";
+import * as ReviewGuides from "../pullRequest/PullRequestReviewGuideService.ts";
+import * as PullRequestHandlers from "../mcp/toolkits/pullRequests/handlers.ts";
+import { PullRequestsToolkit } from "../mcp/toolkits/pullRequests/tools.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
@@ -13,6 +28,8 @@ import * as ThreadMessageIntake from "./ThreadMessageIntake.ts";
 import { assert, it, vi } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
+  type ChangeRequest,
+  SourceControlProviderKind,
   ChatAttachmentId,
   ComposerContextId,
   type ChatAttachment,
@@ -26,6 +43,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   OrchestrationV2ThreadProjectionJson,
+  OrchestratorMcpDelegateTaskResult,
   ScheduledTaskId,
   type ServerProvider,
   ThreadId,
@@ -84,6 +102,7 @@ import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAda
 
 const projectId = ProjectId.make("project:launch-test");
 const otherProjectId = ProjectId.make("project:launch-other");
+const decodeDelegatedTask = Schema.decodeUnknownEffect(OrchestratorMcpDelegateTaskResult);
 const encodeThreadProjection = Schema.encodeEffect(OrchestrationV2ThreadProjectionJson);
 const dispatchIntakeCommand = (
   command: Parameters<typeof ThreadMessageIntake.dispatchCommand>[0],
@@ -137,6 +156,7 @@ const claudeAdapter = {
 } as ProviderAdapter.ProviderAdapterV2["Service"];
 
 interface HarnessOptions {
+  readonly workspaceRoot?: string;
   readonly closeTerminal?: TerminalManager.TerminalManager["Service"]["close"];
   readonly adapters?: ReadonlyArray<ProviderAdapter.ProviderAdapterV2["Service"]>;
   readonly managedFolders?: Layer.Layer<ManagedProjectFolders.ManagedProjectFolders>;
@@ -162,6 +182,7 @@ interface HarnessOptions {
 }
 
 function makeHarness(options: HarnessOptions = {}) {
+  const testProject = { ...project, workspaceRoot: options.workspaceRoot ?? project.workspaceRoot };
   const layerDatabase = SqlitePersistence.layerMemory;
   const layerRegistry = ProviderAdapterRegistry.layerFromAdapters(options.adapters ?? [adapter]);
   const layerOrchestrator = ProviderReplayHarness.layerWithRegistry(
@@ -221,7 +242,7 @@ function makeHarness(options: HarnessOptions = {}) {
       getById: (id) =>
         Effect.succeed(
           id === projectId
-            ? Option.some(project)
+            ? Option.some(testProject)
             : id === otherProjectId
               ? Option.some(otherProject)
               : Option.none(),
@@ -337,6 +358,7 @@ function makeHarness(options: HarnessOptions = {}) {
   return {
     layer: Layer.mergeAll(
       layerLaunch,
+      layerOrchestrator,
       layerRegistry,
       layerThreadManagement,
       layerTitleRegeneration,
@@ -3458,6 +3480,331 @@ it.effect(
       yield* launch("full", "full-access");
       assert.equal(harness.runSetup.mock.calls.length, 1);
     }).pipe(Effect.provide(harness.layer));
+  },
+);
+
+it.live.each(["member repositories", "single repository"])(
+  "delegates worktrees and links worker pull requests in a project with %s",
+  (layout) => {
+    const layerGit = GitVcsDriver.layer.pipe(
+      Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "delegate-shop-" })),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+    );
+    return Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const git = yield* GitVcsDriver.GitVcsDriver;
+      const shop = yield* fs.realPath(
+        yield* fs.makeTempDirectoryScoped({ prefix: "delegate-shop-" }),
+      );
+      const run = (cwd: string, ...args: string[]) =>
+        git
+          .execute({ operation: "delegate-shop-test", cwd, args })
+          .pipe(Effect.map((r) => r.stdout.trim()));
+      const forgeRoot = yield* fs.makeTempDirectoryScoped({ prefix: "delegate-forge-" });
+      const member = (name: string) => ({ path: path.join(shop, name) });
+      for (const name of ["api", "web"]) {
+        const { path: folder } = member(name);
+        yield* fs.makeDirectory(folder);
+        yield* run(folder, "init", "-b", "main");
+        yield* fs.writeFileString(path.join(folder, "product"), name);
+        yield* run(folder, "add", "product");
+        yield* run(
+          folder,
+          "-c",
+          "user.name=Shop",
+          "-c",
+          "user.email=shop@example.test",
+          "commit",
+          "-m",
+          "Initial product",
+        );
+        const bare = path.join(forgeRoot, `${name}.git`);
+        yield* run(forgeRoot, "init", "--bare", "-b", "main", bare);
+        yield* run(folder, "remote", "add", "origin", bare);
+        yield* run(folder, "push", "-u", "origin", "main");
+      }
+      const single = layout === "single repository";
+      const workspaceRoot = single ? member("api").path : shop;
+      const state = { workspaceRoot, trackedFolders: [], thread: null };
+      const harness = makeHarness({
+        workspaceRoot,
+        isGitRepository: () => Effect.succeed(single),
+        createWorktree: git.createWorktree,
+        hasCommit: ({ cwd, refName }) =>
+          git.resolveCommit({ cwd, revision: refName }).pipe(Effect.isSuccess),
+        renameBranch: git.renameBranch,
+        taskFolders: layerTaskFoldersWithGit(state).pipe(Layer.provide(layerGit), Layer.orDie),
+        providers: [
+          {
+            instanceId: modelSelection.instanceId,
+            driver: adapter.driver,
+            enabled: true,
+            installed: true,
+            status: "ready",
+            auth: { status: "authenticated" },
+            version: "test",
+            checkedAt: project.createdAt,
+            models: [
+              {
+                slug: modelSelection.model,
+                name: modelSelection.model,
+                isCustom: false,
+                capabilities: null,
+              },
+            ],
+            slashCommands: [],
+            skills: [],
+          },
+        ],
+        serverSettings: { branchNamingMode: "static" },
+      });
+      const requests = new Map<string, ChangeRequest[]>();
+      const repositoryOf = (cwd: string) =>
+        run(cwd, "remote", "get-url", "origin").pipe(
+          Effect.map((remote) => path.basename(remote, ".git")),
+          Effect.orDie,
+        );
+      const provider = SourceControlProvider.of({
+        kind: SourceControlProviderKind.make("github"),
+        getDefaultBranch: () => Effect.succeed("main"),
+        listChangeRequests: ({ cwd, headSelector }) =>
+          repositoryOf(cwd).pipe(
+            Effect.map((repo) =>
+              (requests.get(repo) ?? []).filter((pr) => pr.headRefName === headSelector),
+            ),
+          ),
+        createChangeRequest: ({ cwd, title, headSelector, baseRefName }) =>
+          Effect.gen(function* () {
+            const repo = yield* repositoryOf(cwd);
+            const existing = requests.get(repo) ?? [];
+            const number = existing.length + 1;
+            requests.set(repo, [
+              ...existing,
+              {
+                provider: SourceControlProviderKind.make("github"),
+                number,
+                title,
+                headRefName: headSelector,
+                baseRefName,
+                state: "open",
+                updatedAt: Option.none(),
+                closedAt: null,
+                mergedAt: null,
+                url: `https://github.com/acme/${repo}/pull/${number}`,
+              },
+            ]);
+          }),
+        getChangeRequest: () => Effect.die("unused"),
+        getRepositoryCloneUrls: () => Effect.die("unused"),
+        createRepository: () => Effect.die("unused"),
+        checkoutChangeRequest: () => Effect.die("unused"),
+      });
+      const pullRequests = Layer.mock(PullRequests.PullRequestService)({
+        addressedProject: () => Effect.succeed({ ...project, workspaceRoot }),
+      });
+      const manager = GitManager.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
+              resolveLink: () => undefined,
+              resolve: () => Effect.succeed(provider),
+              resolveHandle: () => Effect.succeed({ provider, context: null }),
+            }),
+            ProjectionStore.layer,
+            ProjectStore.layer,
+            pullRequests,
+            layerGit,
+          ),
+        ),
+      );
+      const layer = Layer.merge(
+        McpHttpServer.layerOrchestratorToolkit,
+        McpHttpServer.toolkitRegistration(PullRequestsToolkit, PullRequestHandlers.layer),
+      ).pipe(
+        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(PeerForwarding.PeerForwarding)({}),
+            Layer.mock(PeerLinks.PeerLinks)({}),
+            Layer.mock(PeerLinkRequests.PeerLinkRequests)({}),
+            Layer.mock(SecretRequests.SecretRequests)({}),
+            Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
+            Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+            Layer.mock(PullRequestWatch.PullRequestWatchService)({}),
+            Layer.mock(ReviewGuides.PullRequestReviewGuideService)({}),
+            manager,
+            pullRequests,
+          ),
+        ),
+        Layer.provideMerge(harness.layer),
+      );
+      yield* Effect.gen(function* () {
+        const launches = yield* ThreadLaunch.ThreadLaunchService;
+        const threads = yield* ThreadManagement.ThreadManagementService;
+        const taskFolders = yield* TaskFolders.TaskFolders;
+        const server = yield* McpServer.McpServer;
+        const parent = yield* launches.launch(
+          launchInput({
+            command: "shop:parent",
+            thread: "shop:parent",
+            message: "Coordinate pricing",
+          }),
+        );
+        const profile = {
+          protocolVersion: "2025-06-18" as const,
+          capabilities: {},
+          clientInfo: { name: "codex", version: "test" },
+        };
+        const client = McpSchema.McpServerClient.of({
+          ...profile,
+          clientId: 1,
+          clientCapabilities: {},
+          initializePayload: profile,
+          getClient: Effect.die("unused"),
+        });
+        const call = (threadId: ThreadId, name: string, args: Record<string, unknown>) =>
+          server.callTool({ name, arguments: args }).pipe(
+            Effect.provideService(McpSchema.McpServerClient, client),
+            Effect.provideService(Invocation.McpInvocationContext, {
+              environmentId: EnvironmentId.make("shop"),
+              requestNamespace: threadId,
+              thread: {
+                threadId,
+                providerSessionId: threadId,
+                providerInstanceId: modelSelection.instanceId,
+              },
+              client: undefined,
+              capabilities: new Set(["orchestration", "pull-requests"] as const),
+              issuedAt: 1,
+            }),
+          );
+        for (const names of single ? [["api"]] : [["api"], ["web"], ["api", "web"]]) {
+          const input = {
+            task: "Implement pricing",
+            isolation: "worktree",
+            ...(single ? {} : { repositories: names.map(member) }),
+            clientRequestId: names.join("-"),
+          };
+          const result = yield* call(parent.threadId, "delegate_task", input);
+          assert.isNotTrue(result.isError, JSON.stringify(result.content));
+          const child = (yield* decodeDelegatedTask(result.structuredContent)).childThreadId!;
+          const { thread } = yield* preparationSettled(child);
+          assert.isNotNull(thread.worktreePath);
+          const folder = yield* taskFolders.find(thread.worktreePath!);
+          if (single) {
+            assert.isNull(folder);
+            assert.notEqual(thread.worktreePath, workspaceRoot);
+          } else {
+            assert.equal(thread.worktreePath, folder!.projectPath);
+            assert.sameMembers(
+              folder!.repositories.map((r) => r.repositoryPath),
+              names.map((n) => member(n).path),
+            );
+            for (const other of ["api", "web"].filter((name) => !names.includes(name))) {
+              assert.isFalse(yield* fs.exists(path.join(thread.worktreePath!, other)));
+            }
+          }
+          assert.isTrue(
+            harness.runSetup.mock.calls.some(
+              ([setup]) => setup.worktreePath === thread.worktreePath,
+            ),
+          );
+          const create = { title: "Pricing", body: "Update pricing." };
+          const invalid = yield* call(child, "pull_request_create", {
+            ...create,
+            repositoryPath: path.join(shop, "unassigned"),
+          });
+          assert.isTrue(invalid.isError);
+          if (names.length > 1) {
+            const ambiguous = yield* call(child, "pull_request_create", create);
+            assert.isTrue(ambiguous.isError);
+            assert.include(JSON.stringify(ambiguous.content), "repositoryPath");
+          }
+          for (const name of names) {
+            const checkout: string = single
+              ? thread.worktreePath!
+              : path.join(thread.worktreePath!, name);
+            assert.equal(yield* fs.readFileString(path.join(checkout, "product")), name);
+            assert.equal(yield* run(checkout, "symbolic-ref", "--short", "HEAD"), thread.branch);
+            const bare = path.join(forgeRoot, `${name}.git`);
+            assert.equal(
+              yield* run(shop, `--git-dir=${bare}`, "branch", "--list", thread.branch!),
+              "",
+            );
+            yield* run(
+              checkout,
+              "-c",
+              "user.name=Shop",
+              "-c",
+              "user.email=shop@example.test",
+              "commit",
+              "--allow-empty",
+              "-m",
+              "Update pricing",
+            );
+            const created = yield* call(child, "pull_request_create", {
+              ...create,
+              ...(names.length > 1 ? { repositoryPath: checkout } : {}),
+            });
+            assert.isNotTrue(created.isError, JSON.stringify(created.content));
+            assert.deepInclude(created.structuredContent, {
+              repository: `acme/${name}`,
+              created: true,
+            });
+            assert.equal(
+              yield* run(shop, `--git-dir=${bare}`, "rev-parse", `refs/heads/${thread.branch}`),
+              yield* run(checkout, "rev-parse", "HEAD"),
+            );
+            const linked = yield* call(child, "link_pull_request", {
+              url: `https://github.com/acme/${name}/pull/1`,
+            });
+            assert.isNotTrue(linked.isError, JSON.stringify(linked.content));
+          }
+          const shell = yield* threads.getThreadShell(child);
+          assert.sameMembers(
+            shell!.pullRequests!.map((link) => `${link.repository}#${link.number}:${link.source}`),
+            names.flatMap((name) =>
+              names.length === 1
+                ? [`acme/${name}#1:created`]
+                : [`acme/${name}#2:created`, `acme/${name}#1:agent`],
+            ),
+          );
+          if (names.length > 1) {
+            const checkout = path.join(thread.worktreePath!, "web");
+            const pointer = path.join(checkout, ".git");
+            const moved = path.join(checkout, ".git-moved");
+            yield* fs.rename(pointer, moved);
+            const refused = yield* call(child, "pull_request_create", {
+              ...create,
+              repositoryPath: checkout,
+            }).pipe(Effect.ensuring(fs.rename(moved, pointer).pipe(Effect.orDie)));
+            assert.isTrue(refused.isError);
+            assert.include(JSON.stringify(refused.content), "is no longer a worktree");
+          }
+          assert.deepInclude(
+            (yield* call(parent.threadId, "delegate_task", input)).structuredContent,
+            { childThreadId: child },
+          );
+        }
+        const invalid = yield* call(parent.threadId, "delegate_task", {
+          task: "Invalid",
+          isolation: "worktree",
+          repositories: [member("other")],
+        });
+        assert.isTrue(invalid.isError);
+        assert.include(JSON.stringify(invalid.content), "invalid_request");
+        const shared = yield* call(parent.threadId, "delegate_task", {
+          task: "Invalid",
+          repositories: [member("api")],
+        });
+        assert.isTrue(shared.isError);
+        assert.lengthOf(
+          (yield* threads.getThreadProjection(parent.threadId)).subagents,
+          single ? 1 : 3,
+        );
+      }).pipe(Effect.provide(layer));
+    }).pipe(Effect.provide(layerGit), Effect.scoped);
   },
 );
 

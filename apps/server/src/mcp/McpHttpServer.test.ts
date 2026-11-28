@@ -47,6 +47,7 @@ import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 
 import * as DeviceService from "../device/DeviceService.ts";
+import * as TaskFolders from "../workspace/TaskFolders.ts";
 import * as GitManager from "../git/GitManager.ts";
 import * as PullRequestReviewGuideService from "../pullRequest/PullRequestReviewGuideService.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
@@ -116,6 +117,7 @@ const layerPullRequestsTest = McpHttpServer.layerPullRequestsToolkit.pipe(
       Layer.mock(PullRequestReviewGuideService.PullRequestReviewGuideService)({}),
       Layer.mock(PullRequestService.PullRequestService)({}),
       Layer.mock(GitManager.GitManager)({}),
+      Layer.mock(TaskFolders.TaskFolders)({ find: () => Effect.succeed(null) }),
       Layer.mock(Orchestrator.OrchestratorV2)({}),
       Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
       NodeServices.layer,
@@ -1878,6 +1880,7 @@ it.effect(
           ["parentToken", scopeFor("parentToken", false)],
           ["childToken", scopeFor("childToken", true)],
           ["noForgeToken", scopeFor("noForgeToken", false)],
+          ["memberToken", scopeFor("memberToken", true)],
         ]);
         const serverLayer = McpHttpServer.layerMcpTransport(
           McpHttpServer.layerPullRequestsToolkit,
@@ -1894,14 +1897,32 @@ it.effect(
               Layer.mock(ProjectService.ProjectService)({}),
               Layer.mock(PullRequestReviewGuideService.PullRequestReviewGuideService)({}),
               Layer.mock(PullRequestService.PullRequestService)({
-                servesProject: (projectId) => Effect.succeed(projectId !== "project-noForgeToken"),
+                servesProject: (projectId) =>
+                  Effect.succeed(
+                    projectId === "project-parentToken" || projectId === "project-childToken",
+                  ),
               }),
               Layer.mock(GitManager.GitManager)({}),
+              Layer.mock(TaskFolders.TaskFolders)({
+                find: (path) =>
+                  Effect.succeed({
+                    projectId: ProjectId.make("project-memberToken"),
+                    root: path,
+                    anchor: "/shop",
+                    projectRoot: "/shop",
+                    projectPath: path,
+                    projectIsWorktree: false,
+                    repositories: [
+                      { name: "api", repositoryPath: "/shop/api", worktreePath: path + "/api" },
+                    ],
+                  }),
+              }),
               Layer.mock(Orchestrator.OrchestratorV2)({}),
               Layer.mock(ProjectionStore.ProjectionStoreV2)({
                 getThreadShell: (threadId) =>
                   Effect.succeed({
                     projectId: ProjectId.make(threadId.replace("thread-", "project-")),
+                    worktreePath: threadId === "thread-memberToken" ? "/task" : null,
                   } as never),
               }),
               NodeServices.layer,
@@ -1964,6 +1985,7 @@ it.effect(
             "ci_rerun",
           ]),
         );
+        expect(yield* listedTools("memberToken")).toContain("pull_request_create");
         const noForgeTools = yield* listedTools("noForgeToken");
         expect(noForgeTools).toEqual(
           expect.arrayContaining(["link_pull_request", "watch_pull_request"]),

@@ -40,6 +40,7 @@ import {
   PullRequestUrlUnavailableError,
   PullRequestRepositoryInvalidError,
 } from "../../../pullRequest/pullRequestTarget.ts";
+import * as TaskFolders from "../../../workspace/TaskFolders.ts";
 import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
@@ -684,6 +685,10 @@ const CreatePullRequestTool = Tool.make("pull_request_create", {
     environmentId: OrchestratorMcpEnvironmentTarget,
     title: TrimmedNonEmptyString,
     body: Schema.String,
+    repositoryPath: Schema.optional(TrimmedNonEmptyString).annotate({
+      description:
+        "For a task folder with several repositories, choose the absolute path of the checkout to push. Omit for a single checkout.",
+    }),
     base: Schema.optional(TrimmedNonEmptyString),
     draft: Schema.optional(Schema.Boolean),
     private: Schema.optional(Schema.Boolean).annotate({
@@ -693,14 +698,14 @@ const CreatePullRequestTool = Tool.make("pull_request_create", {
   }),
   success: CreatePullRequestResult,
   failure: PullRequestToolError,
-  dependencies: [...forgeDependencies, GitManager.GitManager],
+  dependencies: [...forgeDependencies, GitManager.GitManager, TaskFolders.TaskFolders],
 })
   .annotate(Tool.Title, "Create pull request")
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, true)
-  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenWithoutForge);
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.canCreatePullRequest);
 
 const UpdateNames = Schema.Array(TrimmedNonEmptyString).check(
   Schema.isMinLength(1),

@@ -22,6 +22,7 @@ import * as Base64Url from "effect/encoding/Base64Url";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import * as TaskFolders from "../../../workspace/TaskFolders.ts";
 import * as GitManager from "../../../git/GitManager.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import { isForkRoutingThread } from "../../../project/forkCoordinatorRouting.ts";
@@ -270,6 +271,7 @@ const make = Effect.gen(function* () {
   const watches = yield* PullRequestWatchService.PullRequestWatchService;
   const pullRequests = yield* PullRequestService.PullRequestService;
   const git = yield* GitManager.GitManager;
+  const taskFolders = yield* TaskFolders.TaskFolders;
 
   const projects = yield* ProjectService.ProjectService;
   const random = yield* SecureRandom.SecureRandom;
@@ -419,6 +421,30 @@ const make = Effect.gen(function* () {
 
   const forgeFailure = (error: { readonly message: string }) =>
     new PullRequestForgeError({ detail: error.message, cause: error });
+
+  const pullRequestCheckout = Effect.fn("PullRequests.pullRequestCheckout")(function* (
+    thread: OrchestrationV2ThreadShell,
+    project: OrchestrationProjectShell,
+    repositoryPath: string | undefined,
+  ) {
+    if (thread.worktreePath) {
+      const folder = yield* taskFolders
+        .find(thread.worktreePath)
+        .pipe(Effect.mapError(forgeFailure));
+      if (folder !== null)
+        return yield* taskFolders
+          .checkoutPath(folder, thread.worktreePath, repositoryPath)
+          .pipe(Effect.mapError(forgeFailure));
+    }
+    const cwd = thread.worktreePath ?? project.workspaceRoot;
+    if (
+      repositoryPath !== undefined &&
+      repositoryPath !== cwd &&
+      repositoryPath !== project.workspaceRoot
+    )
+      return yield* new PullRequestForgeError({ detail: `This thread's checkout is ${cwd}.` });
+    return cwd;
+  });
 
   // Layers below the target are pinned to the heads read here; the host refuses if any moved.
   const stackMergeScope = Effect.fnUntraced(function* (
@@ -1090,9 +1116,10 @@ const make = Effect.gen(function* () {
         if (project === undefined) {
           return yield* new PullRequestProjectNotFoundError({ repository: "" });
         }
+        const cwd = yield* pullRequestCheckout(thread, project, input.repositoryPath);
         const created = yield* git
           .createPullRequest({
-            cwd: thread.worktreePath ?? project.workspaceRoot,
+            cwd,
             projectId: project.id,
             title: input.title,
             body: input.body,

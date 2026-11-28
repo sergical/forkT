@@ -290,11 +290,11 @@ const make = Effect.gen(function* () {
       const { target } = input;
       // A worktree there would branch from a commit this checkout has and the
       // other may not, so a remote task runs in that project's checkout.
-      if (input.isolation === "worktree") {
+      if (input.isolation === "worktree" || input.repositories !== undefined) {
         return yield* new OrchestratorMcpFailure({
           code: "invalid_request",
           message:
-            'A task in a linked environment runs in that project\'s checkout; isolation "worktree" is not supported there. Omit isolation, or use t3_thread_launch with environmentId and a worktree workspaceStrategy.',
+            "A task in a linked environment runs in the shared project checkout. Omit isolation and repositories, or use t3_thread_launch with environmentId and a worktree workspaceStrategy.",
         });
       }
       // The provider and model inherit as they do for a task here. Another

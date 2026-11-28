@@ -3113,7 +3113,9 @@ const make = Effect.gen(function* () {
         parent.thread.interactionMode,
         input.interactionMode,
       );
-      let workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy | undefined;
+      let workspaceStrategy:
+        | Extract<OrchestrationV2ThreadLaunchWorkspaceStrategy, { type: "worktree" }>
+        | undefined;
       if (
         input.isolation === "worktree" &&
         !isRetryOfAcceptedDelegation &&
@@ -3164,6 +3166,23 @@ const make = Effect.gen(function* () {
           baseRef: branchAtBase ? branch : base.commitSha,
           startFromOrigin: false,
         };
+      }
+      if (input.repositories !== undefined && !isRetryOfAcceptedDelegation) {
+        if (workspaceStrategy === undefined) {
+          return yield* failure(
+            "invalid_request",
+            "Selecting repositories requires isolation 'worktree'.",
+          );
+        }
+        workspaceStrategy = { ...workspaceStrategy, repositories: input.repositories };
+        yield* threadLaunch
+          .checkWorktreeBase({
+            projectId: parent.thread.projectId,
+            commandId,
+            workspaceStrategy,
+            requireExactSelection: true,
+          })
+          .pipe(Effect.mapError((error) => failure("invalid_request", error.message)));
       }
       const parentNodeId = parentRun.rootNodeId;
       // The command commits the child's preparing run, which only this call

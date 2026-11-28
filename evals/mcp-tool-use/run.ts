@@ -52,6 +52,10 @@ import {
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import { THEME_GUIDE } from "@t3tools/shared/themeCss";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
+import {
+  CODEX_T3_DIRECT_MCP_SERVER,
+  CODEX_DIRECT_ONLY_T3_TOOLS,
+} from "../../apps/server/src/provider/codexLaunchArgs.ts";
 import { buildCodexAdditionalContext } from "../../apps/server/src/provider/CodexDeveloperInstructions.ts";
 import { PULL_REQUEST_LINKING_INSTRUCTIONS } from "@t3tools/provider-core/server/runtimeInstructions";
 import { makeSideChatContext } from "../../apps/server/src/orchestration-v2/ContextHandoffService.ts";
@@ -576,7 +580,10 @@ const hiddenWhileLinksOff = enabledWhen(McpInvocationContext.hiddenWhileLinksOff
 // Agent feedback starts off, and T3 lists its tools only while it is on.
 const hiddenWhileFeedbackOff = enabledWhen(McpInvocationContext.hiddenWhileFeedbackOff);
 // T3 lists PR and CI tools only to a thread whose project is on a forge it reads.
-const hiddenWithoutForge = enabledWhen(McpInvocationContext.hiddenWithoutForge);
+const hiddenWithoutForge = new Set([
+  ...enabledWhen(McpInvocationContext.hiddenWithoutForge),
+  ...enabledWhen(McpInvocationContext.canCreatePullRequest),
+]);
 /**
  * `tools` is T3 as shipped. `raw` takes away T3's PR, CI and issue tools and their instructions,
  * so the agent works the forge with CLIs alone, to measure what the tools save.
@@ -822,6 +829,10 @@ type Base = ReturnType<typeof buildBase> & {
   readonly subagentContext?: string;
 };
 
+const codexDirectNamespace = `mcp__${CODEX_T3_DIRECT_MCP_SERVER.replaceAll("-", "_")}`;
+const isCodexDirectTool = (name: string) =>
+  name.startsWith(T3_PREFIX) && CODEX_DIRECT_ONLY_T3_TOOLS.includes(name.slice(T3_PREFIX.length));
+
 /** Keep the captured harness prompt and tools; replace app-owned context and the real user. */
 const buildCodexBase = (
   template: typeof ResponsesRequest.Type,
@@ -897,6 +908,26 @@ const buildCodexBase = (
     .filter((tool): tool is ApiTool => isRecord(tool) && typeof tool.name === "string");
   if (!nativeTools.some((tool) => tool.name === "exec"))
     throw new Error("Codex template needs code-mode exec.");
+  input.push({
+    type: "additional_tools",
+    role: "developer",
+    tools: [
+      {
+        type: "namespace",
+        name: codexDirectNamespace,
+        description: "Tools in the T3 Code direct namespace.",
+        tools: t3
+          .filter((tool) => isCodexDirectTool(tool.name))
+          .map((tool) => ({
+            type: "function",
+            name: tool.name.slice(T3_PREFIX.length),
+            description: tool.description,
+            parameters: tool.input_schema,
+            strict: false,
+          })),
+      },
+    ],
+  });
   return {
     model: options.model,
     system: [],
@@ -931,10 +962,21 @@ const codexCall = (name: string, input: unknown) => {
   }
   return `text(await tools.${name.replace("mcp__t3-code__", "mcp__t3_code__")}(${JSON.stringify(input)}));`;
 };
-const codexMessages = (messages: ReadonlyArray<ApiMessage>): Array<Block> =>
-  messages.flatMap((message) =>
-    message.content.map((block): Block =>
-      block.type === "tool_use"
+const codexMessages = (messages: ReadonlyArray<ApiMessage>): Array<Block> => {
+  const directCalls = new Set<unknown>();
+  return messages.flatMap((message) =>
+    message.content.map((block): Block => {
+      if (block.type === "tool_use" && isCodexDirectTool(valueText(block.name))) {
+        directCalls.add(block.id);
+        return {
+          type: "function_call",
+          call_id: block.id,
+          namespace: codexDirectNamespace,
+          name: valueText(block.name).slice(T3_PREFIX.length),
+          arguments: JSON.stringify(block.input),
+        };
+      }
+      return block.type === "tool_use"
         ? {
             type: "custom_tool_call",
             call_id: block.id,
@@ -943,7 +985,9 @@ const codexMessages = (messages: ReadonlyArray<ApiMessage>): Array<Block> =>
           }
         : block.type === "tool_result"
           ? {
-              type: "custom_tool_call_output",
+              type: directCalls.has(block.tool_use_id)
+                ? "function_call_output"
+                : "custom_tool_call_output",
               call_id: block.tool_use_id,
               output: valueText(block.content),
             }
@@ -956,9 +1000,10 @@ const codexMessages = (messages: ReadonlyArray<ApiMessage>): Array<Block> =>
                   text: valueText(block.text),
                 },
               ],
-            },
-    ),
+            };
+    }),
   );
+};
 /** One tool call the shell simulator has answered, or one from the case's prior turns. */
 type ShellEntry = { readonly tool: string; readonly input: unknown; readonly output: string };
 /** PRs T3 links by itself because a shell command created them, as `gh pr create` does. */
@@ -2751,10 +2796,12 @@ export const executeCodex = async (
 };
 
 const codexCatalog = (base: Base) => [
-  ...base.t3.map((tool) => ({
-    name: tool.name.replace("mcp__t3-code__", "mcp__t3_code__"),
-    description: `${valueText(tool.description)}\nInput JSON schema: ${JSON.stringify(tool.input_schema)}`,
-  })),
+  ...base.t3
+    .filter((tool) => !isCodexDirectTool(tool.name))
+    .map((tool) => ({
+      name: tool.name.replace("mcp__t3-code__", "mcp__t3_code__"),
+      description: `${valueText(tool.description)}\nInput JSON schema: ${JSON.stringify(tool.input_schema)}`,
+    })),
   ...[
     ...valueText(base.nativeTools.find((tool) => tool.name === "exec")?.description).matchAll(
       /### `([^`]+)`/g,
@@ -2797,7 +2844,7 @@ const callCodex = Effect.fn("evaluateMcpToolUse.callCodex")(function* (
           {
             type: "tool_use",
             id: item.call_id,
-            name: item.name,
+            name: item.namespace === codexDirectNamespace ? `${T3_PREFIX}${item.name}` : item.name,
             input:
               item.type === "custom_tool_call" ? item.input : JSON.parse(valueText(item.arguments)),
           },

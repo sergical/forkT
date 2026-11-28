@@ -28,6 +28,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Tool } from "effect/ai";
 
+import * as TaskFolders from "../../../workspace/TaskFolders.ts";
 import * as GitManager from "../../../git/GitManager.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import {
@@ -222,6 +223,7 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       ...options.pullRequests,
     }),
     Layer.mock(GitManager.GitManager)(options.git ?? {}),
+    Layer.mock(TaskFolders.TaskFolders)({ find: () => Effect.succeed(null) }),
     Layer.succeed(SecureRandom.SecureRandom, testCrypto),
     McpToolAccessTestkit.liveThreadsLayer,
   );

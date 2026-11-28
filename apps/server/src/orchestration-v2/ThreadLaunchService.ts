@@ -135,6 +135,7 @@ type PreparationInput = Pick<
   "commandId" | "projectId" | "workspaceStrategy" | "initialMessage" | "linkOrigin"
 > & {
   readonly reusedWorktree?: { readonly baseRef: string };
+  readonly requireExactSelection?: boolean;
   /** Set when an agent asked for this run, with the thread it asked from if it has one. */
   readonly askedByAgent?: { readonly threadId: ThreadId | undefined };
 };
@@ -248,6 +249,7 @@ export class ThreadLaunchService extends Context.Service<
       input: Pick<ThreadLaunchInput, "projectId" | "workspaceStrategy"> & {
         /** Skips the check when this launch was already accepted, so its retry replays. */
         readonly commandId?: CommandId;
+        readonly requireExactSelection?: boolean;
       },
     ) => Effect.Effect<
       void,
@@ -441,7 +443,7 @@ const make = Effect.gen(function* () {
       { concurrency: "unbounded" },
     );
     // launch() turns a Scratch worktree request into a root launch.
-    if (isScratch) return;
+    if (isScratch && !input.requireExactSelection) return;
     if (Option.isSome(receipt) && receipt.value.status === "accepted") return;
     const project = Option.getOrUndefined(projectOption);
     if (project === undefined) return;
@@ -449,6 +451,7 @@ const make = Effect.gen(function* () {
     const taskPlan = yield* taskFolders.plan({
       projectId: project.id,
       repositories: strategy.repositories,
+      requireExactSelection: input.requireExactSelection,
     });
     // Each repository of a plain project folder starts from its own default branch.
     if (taskPlan !== null && !taskPlan.projectIsRepository) return;
@@ -735,7 +738,11 @@ const make = Effect.gen(function* () {
       if (branchName !== null) stopBranchName = Fiber.interrupt(branchName);
       if (input.workspaceStrategy.type === "worktree") {
         const taskPlan = yield* taskFolders
-          .plan({ projectId: project.id, repositories: input.workspaceStrategy.repositories })
+          .plan({
+            projectId: project.id,
+            repositories: input.workspaceStrategy.repositories,
+            requireExactSelection: input.requireExactSelection,
+          })
           .pipe(Effect.mapError(mapError(input, "provision-worktree", threadId)));
         // A plain project folder has no branch of its own to fetch or start from.
         const projectIsRepository = taskPlan === null || taskPlan.projectIsRepository;
@@ -1795,6 +1802,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         projectId: thread.projectId,
         workspaceStrategy: reuse?.strategy ?? workspacePreparation,
+        requireExactSelection: thread.lineage.relationshipToParent === "subagent",
         ...(thread.linkOrigin === undefined ? {} : { linkOrigin: thread.linkOrigin }),
         ...askedByAgent(thread, message),
         ...(reuse === null ? {} : { reusedWorktree: reuse.reusedWorktree }),

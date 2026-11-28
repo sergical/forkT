@@ -782,6 +782,10 @@ export const OrchestrationV2RunBackgroundWorkCancelled = Schema.Struct({
 export type OrchestrationV2RunBackgroundWorkCancelled =
   typeof OrchestrationV2RunBackgroundWorkCancelled.Type;
 
+export const WorktreeRepositories = Schema.Array(
+  Schema.Struct({ path: TrimmedNonEmptyString }),
+).check(Schema.isMaxLength(PROJECT_TRACKED_FOLDERS_MAX));
+
 export const OrchestrationV2ThreadLaunchWorkspaceStrategy = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("root"),
@@ -798,11 +802,9 @@ export const OrchestrationV2ThreadLaunchWorkspaceStrategy = Schema.Union([
     branch: Schema.optional(GitRefName),
     startFromOrigin: Schema.optional(Schema.Boolean),
     repositories: Schema.optional(
-      Schema.Array(Schema.Struct({ path: TrimmedNonEmptyString }))
-        .check(Schema.isMaxLength(PROJECT_TRACKED_FOLDERS_MAX))
-        .annotate({
-          description: "Tracked Git folders to give a worktree. Default: all, or none above 8.",
-        }),
+      WorktreeRepositories.annotate({
+        description: "Tracked Git folders to give a worktree. Default: all, or none above 8.",
+      }),
     ),
   }),
 ]);

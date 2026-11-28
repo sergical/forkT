@@ -40,6 +40,7 @@ import * as MilestoneEvents from "../milestones/MilestoneEvents.ts";
 import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as TaskFolders from "../workspace/TaskFolders.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as PullRequestWatchService from "../pullRequest/PullRequestWatchService.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -307,6 +308,7 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
   );
   const pullRequests = yield* Effect.serviceOption(PullRequestService.PullRequestService);
   const projections = yield* Effect.serviceOption(ProjectionStore.ProjectionStoreV2);
+  const taskFolders = yield* Effect.serviceOption(TaskFolders.TaskFolders);
   const sessions = yield* Effect.serviceOption(SessionStore.SessionStore);
   // Auth runs once per request, so a response that streams on ends when the outside client's
   // session is revoked or expires. `events/stream` ends itself first with
@@ -335,17 +337,18 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
   const forgeOfThread = yield* Cache.make({
     capacity: 1_000,
     timeToLive: Duration.minutes(1),
-    lookup: (threadId: ThreadId): Effect.Effect<boolean | undefined> =>
-      Option.isNone(pullRequests) || Option.isNone(projections)
-        ? Effect.undefined
-        : projections.value.getThreadShell(threadId).pipe(
-            Effect.flatMap((thread) =>
-              thread === null
-                ? Effect.undefined
-                : pullRequests.value.servesProject(thread.projectId),
-            ),
-            Effect.orElseSucceed(() => undefined),
-          ),
+    lookup: Effect.fn("McpHttpServer.forgeOfThread")(
+      function* (threadId: ThreadId) {
+        if (Option.isNone(pullRequests) || Option.isNone(projections)) return {};
+        const thread = yield* projections.value.getThreadShell(threadId);
+        if (thread === null) return {};
+        const forge = yield* pullRequests.value.servesProject(thread.projectId);
+        if (forge || !thread.worktreePath || Option.isNone(taskFolders)) return { forge };
+        const folder = yield* taskFolders.value.find(thread.worktreePath);
+        return { forge, hasPreparedRepositories: (folder?.repositories.length ?? 0) > 0 };
+      },
+      Effect.orElseSucceed(() => ({})),
+    ),
   });
   const authenticateRequest = Effect.fn("McpHttpServer.authenticateRequest")(function* (
     request: HttpServerRequest.HttpServerRequest,
@@ -380,7 +383,7 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
     const { linkedEnvironments, agentFeedback, workflows } = yield* settingsFlags;
     if (limited.client?.linked === true && !linkedEnvironments) return linkedEnvironmentsOff;
     const origin = Option.getOrUndefined(Option.map(requestUrl(request), (url) => url.origin));
-    const forge =
+    const forgeAccess =
       limited.thread === undefined
         ? undefined
         : yield* Cache.get(forgeOfThread, limited.thread.threadId);
@@ -390,7 +393,7 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
       agentFeedback,
       workflows,
       origin,
-      ...(forge === undefined ? {} : { forge }),
+      ...forgeAccess,
     };
   });
   // Untraced: a span here would wrap the tool call; the HTTP server span already covers it.

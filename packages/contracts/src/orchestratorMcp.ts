@@ -42,6 +42,7 @@ import {
   OrchestrationV2DelegatedFrom,
   OrchestrationV2RunStatus,
   OrchestrationV2TurnItemStatus,
+  WorktreeRepositories,
 } from "./orchestrationV2.ts";
 import { ProviderOptionSelection, ProviderOptionSelectionValue } from "./model.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
@@ -187,6 +188,12 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
     Schema.Literals(["shared", "worktree"]).annotate({
       description:
         "'shared' (default): parent checkout. 'worktree': new prepared checkout from the parent commit, for a separate checkout or PR per child. Uncommitted edits stay out.",
+    }),
+  ),
+  repositories: Schema.optional(
+    WorktreeRepositories.check(Schema.isMinLength(1)).annotate({
+      description:
+        "With isolation:'worktree', prepare these member repositories. Use absolute paths of Git folders inside the project or in its trackedFolders. Omit for the usual worktree.",
     }),
   ),
   mode: Schema.optional(
