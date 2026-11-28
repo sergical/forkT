@@ -15,7 +15,11 @@ import {
   runRanAfter,
   usageLimitBlockedRun,
 } from "@t3tools/shared/orchestrationV2ThreadError";
-import { isForkCoordinatorThreadId, threadIssueKeysEqual } from "@t3tools/contracts";
+import {
+  forkCoordinatorProjectId,
+  isForkCoordinatorThreadId,
+  threadIssueKeysEqual,
+} from "@t3tools/contracts";
 import { canonicalizeGitCafePullRequestUrl } from "@t3tools/source-control-definitions/registry";
 import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
 import {
@@ -230,6 +234,9 @@ import {
 import { planThreadDeletion } from "./ThreadDeletion.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ServerSettings from "../serverSettings.ts";
+
+const sharedAnswerId = (requestId: string, participant: ThreadId) =>
+  `shared-answer:${requestId.length}:${requestId}:${participant}`;
 
 const isMessageQuestionAnswer = Schema.is(
   Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
@@ -714,6 +721,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "queued-run.cancel":
     case "queued-run.edit":
     case "runtime-request.respond":
+    case "runtime-request.share":
     case "runtime-request.delivery.fail":
     case "thread.user-input.dismiss":
     case "checkpoint.rollback":
@@ -11602,6 +11610,91 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     },
   );
 
+  const dispatchRuntimeRequestShare = Effect.fn("Orchestrator.dispatchRuntimeRequestShare")(
+    function* (
+      command: Extract<OrchestrationV2InternalCommand, { type: "runtime-request.share" }>,
+      events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    ) {
+      const refuse = (cause: string) =>
+        new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause,
+        });
+      const source = yield* refuseNativeSubagentMessage(command);
+      const readThread = (id: ThreadId) =>
+        projectionStore.getThread(id).pipe(mapDispatchError(command));
+      // Each ordinary conversation owns its delegated subtree. An ordinary fork starts another conversation.
+      const conversationOf = Effect.fnUntraced(function* (thread: OrchestrationV2AppThread) {
+        while (
+          thread.lineage.relationshipToParent === "subagent" &&
+          thread.lineage.parentThreadId !== null
+        ) {
+          thread = yield* readThread(thread.lineage.parentThreadId);
+        }
+        return thread.id;
+      });
+      const owner = yield* conversationOf(source);
+      const caller = yield* readThread(command.callerThreadId);
+      if (
+        source.archivedAt !== null ||
+        source.deletedAt !== null ||
+        caller.projectId !== source.projectId ||
+        (caller.id !== owner && forkCoordinatorProjectId(caller.id) !== source.projectId)
+      )
+        return yield* refuse(
+          "Share the question from its owning conversation or project coordinator.",
+        );
+
+      const { request, item, node } = yield* projectionStore
+        .getRuntimeResponseContext(source.id, command.requestId)
+        .pipe(mapDispatchError(command));
+      if (
+        request?.status !== "pending" ||
+        request.kind !== "user_input" ||
+        request.responseCapability.type === "not_resumable" ||
+        item?.type !== "user_input_request" ||
+        item.questions.some((q) => q.isSecret)
+      ) {
+        return yield* refuse("Only a pending, non-secret question can be shared.");
+      }
+      const participants = new Set(command.participantThreadIds);
+      participants.delete(source.id);
+      for (const id of participants) {
+        const target = yield* readThread(id);
+        if (
+          target.projectId !== source.projectId ||
+          target.archivedAt !== null ||
+          target.deletedAt !== null ||
+          isProviderNativeSubagentThread(target) ||
+          (yield* conversationOf(target)) !== owner
+        ) {
+          return yield* refuse(
+            "Each participant must be active work in the question's conversation.",
+          );
+        }
+        yield* refuseAboveDispatchModeLimit(command, id, target);
+      }
+      const previous = request.sharedWithThreadIds ?? [];
+      if (previous.length === participants.size && previous.every((id) => participants.has(id)))
+        return;
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "runtime-request.updated",
+        threadId: source.id,
+        ...(node?.runId == null ? {} : { runId: node.runId }),
+        nodeId: request.nodeId,
+        occurredAt: yield* DateTime.now,
+        payload: {
+          ...request,
+          sharedWithThreadIds: participants.size ? [...participants] : undefined,
+        },
+      });
+    },
+  );
+
   const dispatchRuntimeRequestRespond = Effect.fn("Orchestrator.dispatchRuntimeRequestRespond")(
     function* (
       command: Extract<OrchestrationV2Command, { readonly type: "runtime-request.respond" }>,
@@ -11681,6 +11774,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: `Provider session ${providerSessionId} was not found.`,
         });
       }
+      if (runtimeRequest.sharedWithThreadIds?.length && (yield* DispatchModeLimit) !== undefined) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "This question is shared for a human decision. The user can answer it in Inbox.",
+        });
+      }
       let answers = command.answers;
       if (runtimeRequest.kind === "user_input" && answers !== undefined) {
         const decoded = yield* decodeUserInputAnswers(answers).pipe(mapDispatchError(command));
@@ -11699,7 +11799,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           : ("completed" as const);
       const replies: string[] = [];
       if (
-        runtimeRequest.responseCapability.type === "message" &&
+        (runtimeRequest.responseCapability.type === "message" ||
+          runtimeRequest.sharedWithThreadIds?.length) &&
         resolvedNodeStatus !== "cancelled"
       ) {
         if (approvalTurnItem?.type !== "user_input_request") {
@@ -11773,6 +11874,24 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             commandType: command.type,
             cause: "Enter an answer before sending.",
           });
+        }
+        if (runtimeRequest.sharedWithThreadIds?.length) {
+          const text = `The user answered the shared question:\n\n${replies.join("\n\n")}`;
+          const attachments = Object.values(command.attachmentsByQuestionId ?? {}).flat();
+          const deliveries = runtimeRequest.sharedWithThreadIds.map((threadId) => ({
+            id: sharedAnswerId(command.requestId, threadId),
+            commandId: command.commandId,
+            threadId,
+            request: {
+              type: "runtime-request.deliver-shared-answer" as const,
+              sourceThreadId: command.threadId,
+              projectId: thread.projectId,
+              requestId: command.requestId,
+              text,
+              attachments,
+            },
+          }));
+          yield* Ref.update(effects, (pending) => [...pending, ...deliveries]);
         }
       }
 
@@ -12037,7 +12156,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       providerInstanceId: thread.providerInstanceId,
       occurredAt: now,
       payload: {
-        id: TurnItemId.make(`turn-item:runtime-request-delivery-failure:${command.requestId}`),
+        id: TurnItemId.make(
+          command.participantThreadId === undefined
+            ? `turn-item:runtime-request-delivery-failure:${command.requestId}`
+            : `turn-item:failure:${sharedAnswerId(command.requestId, command.participantThreadId)}`,
+        ),
         threadId: command.threadId,
         runId: node.runId,
         nodeId: node.id,
@@ -12054,7 +12177,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         type: "error",
         failure: {
           class: "transport_error",
-          message: RUNTIME_REQUEST_DELIVERY_FAILED_MESSAGE,
+          message:
+            command.participantThreadId === undefined
+              ? RUNTIME_REQUEST_DELIVERY_FAILED_MESSAGE
+              : `The answer was saved, but delivery to ${command.participantThreadId} could not be confirmed.`,
           code: null,
           retryable: null,
         },
@@ -16303,6 +16429,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "prepared-run.retry":
         yield* dispatchPreparedRunRetry(command, events);
         break;
+      case "runtime-request.share":
+        yield* dispatchRuntimeRequestShare(command, events);
+        break;
       case "runtime-request.respond":
         yield* dispatchRuntimeRequestRespond(command, events, effects);
         break;
@@ -16641,6 +16770,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         (planned) =>
           planned.events.length > 0 ||
           isUnobservedAcknowledgement(command) ||
+          command.type === "runtime-request.share" ||
           command.type === "thread.background-work.settle" ||
           // A stale visit changes no read state.
           command.type === "thread.visit" ||

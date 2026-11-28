@@ -246,7 +246,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
     ),
   ),
   t3_pending_request: McpToolAccess.either(
-    (input) => input.action !== "respond",
+    (input) => input.action === "list" || input.action === "read",
     McpToolAccess.reads((input) =>
       Effect.gen(function* () {
         if (input.action === "list") {
@@ -258,29 +258,61 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
           };
         }
         const requestId = yield* required(input.requestId, "requestId");
-        const { item } = yield* readQuestion({ threadId: input.threadId, requestId });
-        return { requestId, questions: item.questions };
+        const { item, request } = yield* readQuestion({ threadId: input.threadId, requestId });
+        return {
+          requestId,
+          questions: item.questions,
+          ...(request.sharedWithThreadIds?.length ? { userOnly: true } : {}),
+        };
       }),
     ),
-    writesThread((input) =>
-      Effect.gen(function* () {
-        const requestId = yield* required(input.requestId, "requestId");
-        const answers = yield* required(input.answers, "answers");
-        const { threads, projection } = yield* readQuestion({
-          threadId: input.threadId,
-          requestId,
-        });
-        const result = yield* threads
-          .dispatch({
-            type: "runtime-request.respond",
-            threadId: projection.thread.id,
-            commandId: yield* newCommandId(),
+    McpToolAccess.writesThreads(
+      (input) =>
+        input.action === "share"
+          ? [input.threadId, ...(input.participantThreadIds ?? [])]
+          : [input.threadId],
+      (input) =>
+        Effect.gen(function* () {
+          const requestId = yield* required(input.requestId, "requestId");
+          if (input.action === "share") {
+            const { caller, threads } = yield* readCaller();
+            if (!caller)
+              return yield* new OrchestratorMcpFailure({
+                code: "capability_denied",
+                message: "Share the question from its owning conversation.",
+              });
+            const participantThreadIds = yield* required(
+              input.participantThreadIds,
+              "participantThreadIds",
+            );
+            const result = yield* threads
+              .dispatch({
+                type: "runtime-request.share",
+                threadId: input.threadId ?? caller.id,
+                callerThreadId: caller.id,
+                commandId: yield* newCommandId(),
+                requestId,
+                participantThreadIds,
+              })
+              .pipe(Effect.mapError(dispatchFailure));
+            return { sequence: result.sequence };
+          }
+          const answers = yield* required(input.answers, "answers");
+          const { threads, projection } = yield* readQuestion({
+            threadId: input.threadId,
             requestId,
-            answers,
-          })
-          .pipe(Effect.mapError(dispatchFailure));
-        return { sequence: result.sequence };
-      }),
+          });
+          const result = yield* threads
+            .dispatch({
+              type: "runtime-request.respond",
+              threadId: projection.thread.id,
+              commandId: yield* newCommandId(),
+              requestId,
+              answers,
+            })
+            .pipe(Effect.mapError(dispatchFailure));
+          return { sequence: result.sequence };
+        }),
     ),
   ),
   t3_submit_output: McpToolAccess.actsAsCaller((input) =>

@@ -1420,6 +1420,7 @@ export const OrchestrationV2RuntimeRequest = Schema.Struct({
   nodeId: NodeId,
   providerTurnId: Schema.NullOr(ProviderTurnId),
   nativeRequestRef: Schema.NullOr(OrchestrationV2ProviderRef),
+  sharedWithThreadIds: Schema.optional(Schema.Array(ThreadId)),
   kind: Schema.Union([
     ProviderRequestKind,
     Schema.Literals(["dynamic_tool_call", "user_input", "auth_refresh"]),
@@ -1570,6 +1571,7 @@ export const OrchestrationV2PlanStep = Schema.Struct({
 export type OrchestrationV2PlanStep = typeof OrchestrationV2PlanStep.Type;
 
 export const OrchestrationV2UserInputQuestion = Schema.Struct({
+  isSecret: Schema.optional(Schema.Boolean),
   id: TrimmedNonEmptyString,
   header: TrimmedNonEmptyString,
   question: TrimmedNonEmptyString,
@@ -2397,7 +2399,7 @@ export const OrchestrationV2PendingRuntimeRequestSummary = Schema.Struct({
   createdAt: Schema.DateTimeUtc,
   /** False for async questions the run keeps working past. Absent from older servers. */
   blocking: Schema.optional(Schema.Boolean),
-  /** Secret and link cards: only the user can answer them, never a coordinating agent. */
+  /** Only a person can answer secret cards, link cards and explicitly shared questions. */
   userOnly: Schema.optional(Schema.Boolean),
 });
 export type OrchestrationV2PendingRuntimeRequestSummary =
@@ -3997,9 +3999,18 @@ const OrchestrationV2InternalCommand = Schema.Union([
     requestId: CommandId,
     message: TrimmedNonEmptyString,
   }),
+  Schema.Struct({
+    type: Schema.Literal("runtime-request.share"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    requestId: RuntimeRequestId,
+    callerThreadId: ThreadId,
+    participantThreadIds: Schema.Array(ThreadId),
+  }),
   /** Delivering the answer to request `requestId` failed on its last attempt. */
   Schema.Struct({
     type: Schema.Literal("runtime-request.delivery.fail"),
+    participantThreadId: Schema.optional(ThreadId),
     commandId: CommandId,
     threadId: ThreadId,
     requestId: RuntimeRequestId,

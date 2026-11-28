@@ -1,4 +1,6 @@
 import {
+  ChatAttachment,
+  ProjectId,
   CheckpointId,
   CheckpointScopeId,
   CommandId,
@@ -94,6 +96,14 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     ),
   }),
   Schema.Struct({
+    type: Schema.Literal("runtime-request.deliver-shared-answer"),
+    sourceThreadId: ThreadId,
+    projectId: ProjectId,
+    requestId: RuntimeRequestId,
+    text: Schema.String,
+    attachments: Schema.Array(ChatAttachment),
+  }),
+  Schema.Struct({
     type: Schema.Literal("runtime-request.respond"),
     providerSessionId: ProviderSessionId,
     requestId: RuntimeRequestId,
@@ -145,6 +155,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
 export type OrchestrationEffectRequestV2 = typeof OrchestrationEffectRequestV2.Type;
 
 export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
+  "runtime-request.deliver-shared-answer",
   "provider-runtime.continue",
   "provider-session.detach",
   "provider-thread.rollback",

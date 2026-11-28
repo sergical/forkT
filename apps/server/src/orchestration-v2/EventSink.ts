@@ -402,7 +402,47 @@ const layerBase: Layer.Layer<
         });
       });
 
-    const normalizeEvents = (events: ReadonlyArray<OrchestrationV2DomainEvent>) => {
+    // Provider snapshots know nothing about recipients or answers accepted while their event was in flight.
+    const normalizeUserQuestion = Effect.fnUntraced(function* (
+      event: Extract<OrchestrationV2DomainEvent, { type: "runtime-request.updated" }>,
+      sharing: boolean,
+    ) {
+      const [row] = yield* sql<{ payload_json: string }>`
+        SELECT payload_json FROM orchestration_v2_projection_runtime_requests
+        WHERE runtime_request_id = ${event.payload.id} AND thread_id = ${event.threadId}
+          AND (${sharing ? 1 : 0} OR json_extract(payload_json, '$.sharedWithThreadIds') IS NOT NULL)
+      `;
+      const current = row && (yield* ProjectionStore.decodeRuntimeRequestPayload(row.payload_json));
+      if (sharing) {
+        if (current?.status !== "pending" || current.responseCapability.type === "not_resumable") {
+          return yield* new EventSinkWriteError({
+            eventCount: 1,
+            cause: "This question is no longer available to share.",
+          });
+        }
+        return {
+          ...event,
+          payload: { ...current, sharedWithThreadIds: event.payload.sharedWithThreadIds },
+        };
+      }
+      if (current?.sharedWithThreadIds) {
+        return {
+          ...event,
+          payload:
+            current.status === "pending"
+              ? { ...event.payload, sharedWithThreadIds: current.sharedWithThreadIds }
+              : current,
+        };
+      }
+      if (!event.payload.sharedWithThreadIds) return event;
+      const { sharedWithThreadIds: _supplied, ...payload } = event.payload;
+      return { ...event, payload };
+    });
+
+    const normalizeEvents = (
+      events: ReadonlyArray<OrchestrationV2DomainEvent>,
+      sharing = false,
+    ) => {
       const runOrdinals = new Map(
         events.flatMap((event) =>
           event.type === "run.created" || event.type === "run.updated"
@@ -420,7 +460,9 @@ const layerBase: Layer.Layer<
                   event.payload.runId === null ? undefined : runOrdinals.get(event.payload.runId),
                 )
                 .pipe(Effect.map((payload) => ({ ...event, payload })))
-            : Effect.succeed(event),
+            : event.type === "runtime-request.updated" && event.payload.kind === "user_input"
+              ? normalizeUserQuestion(event, sharing)
+              : Effect.succeed(event),
         { concurrency: 1 },
       );
     };
@@ -845,6 +887,7 @@ const layerBase: Layer.Layer<
             runId === undefined
               ? input.events
               : yield* updateDelegatedCompletionOnly(input.events, (id) => id === runId),
+            input.commandType === "runtime-request.share",
           );
           const storedEvents = yield* eventStore.append({
             commandId: input.commandId,

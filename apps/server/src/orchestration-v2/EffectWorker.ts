@@ -1,4 +1,4 @@
-import { CommandId, type RunId } from "@t3tools/contracts";
+import { CommandId, MessageId, type RunId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -498,6 +498,44 @@ export const layerExecutor: Layer.Layer<
                     }),
                 ),
               );
+          case "runtime-request.deliver-shared-answer": {
+            const request = effect.request;
+            return threads
+              .sendToThread({
+                projectId: request.projectId,
+                threadId: effect.threadId,
+                commandId: CommandId.make(`command:${effect.id}`),
+                messageId: MessageId.make(`message:${effect.id}`),
+                senderThreadId: request.sourceThreadId,
+                createdBy: "agent",
+                creationSource: "server",
+                text: request.text,
+                attachments: request.attachments,
+                mode: "auto",
+              })
+              .pipe(
+                Effect.asVoid,
+                Effect.tapCause((cause) =>
+                  willRetry || Cause.hasInterruptsOnly(cause)
+                    ? Effect.void
+                    : threads.dispatch({
+                        type: "runtime-request.delivery.fail",
+                        commandId: CommandId.make(`failure:${effect.id}`),
+                        threadId: request.sourceThreadId,
+                        requestId: request.requestId,
+                        participantThreadId: effect.threadId,
+                      }),
+                ),
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationEffectExecutionError({
+                      effectId: effect.id,
+                      effectType: request.type,
+                      cause,
+                    }),
+                ),
+              );
+          }
           case "runtime-request.respond": {
             const requestId = effect.request.requestId;
             return runtimeRequests

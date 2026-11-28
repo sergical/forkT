@@ -2651,6 +2651,120 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
       }),
   );
 
+  it.effect("keeps a shared question in its conversation when the provider reports it again", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const threadId = ThreadId.make("shared-pricing");
+      const web = ThreadId.make("shared-pricing-web");
+      const unrelated = ThreadId.make("separate-pricing");
+      for (const id of [threadId, unrelated]) {
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make(`create-${id}`),
+          threadId: id,
+          projectId: ProjectId.make("shared-question-project"),
+          title: id,
+          modelSelection,
+          createdBy: "user",
+          creationSource: "web",
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: process.cwd(),
+        });
+      }
+      const coordinator = (yield* orchestrator.getThreadProjection(threadId)).thread;
+      const now = yield* DateTime.now;
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("pricing-worker-created"),
+            type: "thread.created",
+            threadId: web,
+            occurredAt: now,
+            payload: {
+              ...coordinator,
+              id: web,
+              createdBy: "agent",
+              creationSource: "mcp",
+              lineage: {
+                parentThreadId: threadId,
+                rootThreadId: threadId,
+                relationshipToParent: "subagent",
+              },
+            },
+          },
+        ],
+      });
+      const { requestId } = yield* seedPendingQuestion(threadId, null, { type: "message" });
+      const original = (yield* orchestrator.getThreadProjection(threadId)).runtimeRequests[0]!;
+      const share = {
+        type: "runtime-request.share" as const,
+        commandId: CommandId.make("share-pricing"),
+        callerThreadId: threadId,
+        threadId,
+        requestId,
+        participantThreadIds: [web] as const,
+      };
+      for (const attempt of [
+        { ...share, commandId: CommandId.make("unrelated-caller"), callerThreadId: unrelated },
+        {
+          ...share,
+          commandId: CommandId.make("unrelated-recipient"),
+          participantThreadIds: [web, unrelated] as const,
+        },
+      ]) {
+        assert.isTrue(
+          (yield* orchestrator.dispatch(attempt).pipe(Effect.result))._tag === "Failure",
+        );
+      }
+      assert.isUndefined(
+        (yield* orchestrator.getThreadProjection(threadId)).runtimeRequests[0]?.sharedWithThreadIds,
+      );
+      yield* orchestrator.dispatch(share);
+      yield* orchestrator.dispatch({
+        ...share,
+        commandId: CommandId.make("unshare-pricing"),
+        participantThreadIds: [],
+      });
+      assert.isUndefined(
+        (yield* orchestrator.getThreadProjection(threadId)).runtimeRequests[0]?.sharedWithThreadIds,
+      );
+      yield* orchestrator.dispatch({ ...share, commandId: CommandId.make("reshare-pricing") });
+      const reportQuestion = (id: string) =>
+        sink.write({
+          events: [
+            {
+              id: EventId.make(id),
+              type: "runtime-request.updated",
+              threadId,
+              nodeId: original.nodeId,
+              occurredAt: now,
+              payload: original,
+            },
+          ],
+        });
+      yield* reportQuestion("provider-repeated-pending-question");
+      assert.deepEqual(
+        (yield* orchestrator.getThreadProjection(threadId)).runtimeRequests[0]?.sharedWithThreadIds,
+        [web],
+      );
+      const answer = {
+        type: "runtime-request.respond" as const,
+        commandId: CommandId.make("answer-pricing"),
+        threadId,
+        requestId,
+        answers: { color: "Blue", sizes: ["Small"] },
+      };
+      yield* orchestrator.dispatch(answer);
+      yield* reportQuestion("provider-repeated-answered-question");
+      const saved = (yield* orchestrator.getThreadProjection(threadId)).runtimeRequests[0];
+      assert.equal(saved?.status, "resolved");
+      assert.deepEqual(saved?.answers, answer.answers);
+    }),
+  );
+
   it.effect("answers an async question after its provider exits and commits the answer once", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;

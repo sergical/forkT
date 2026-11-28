@@ -129,9 +129,10 @@ const question = Schema.Struct({
 const PendingRequestTool = Tool.make("t3_pending_request", {
   ...commandTool,
   description:
-    "Pending user questions in a thread. Omit `threadId` for this thread. list: their ids; approvals are not listed. read: one by `requestId`. respond: answer one with `answers`; this cannot approve a permission request.",
+    "List, read or respond to pending questions by requestId in threadId (default: this thread). For one human decision governing multiple workers, the owning conversation can share an existing question by setting participantThreadIds to all other workers who need the answer ([] clears sharing). The user answers once in Inbox. Approvals cannot be shared or answered here.",
   parameters: Schema.Struct({
-    action: Schema.Literals(["list", "read", "respond"]),
+    action: Schema.Literals(["list", "read", "respond", "share"]),
+    participantThreadIds: Schema.optional(Schema.Array(ThreadId)),
     environmentId: OrchestratorMcpEnvironmentTarget,
     threadId: Schema.optional(ThreadId),
     requestId: Schema.optional(RuntimeRequestId),
@@ -139,7 +140,11 @@ const PendingRequestTool = Tool.make("t3_pending_request", {
   }),
   success: Schema.Union([
     Schema.Struct({ requestIds: Schema.Array(RuntimeRequestId) }),
-    Schema.Struct({ requestId: RuntimeRequestId, questions: Schema.Array(question) }),
+    Schema.Struct({
+      requestId: RuntimeRequestId,
+      questions: Schema.Array(question),
+      userOnly: Schema.optional(Schema.Boolean),
+    }),
     OrchestrationV2DispatchCommandResult,
   ]),
 })

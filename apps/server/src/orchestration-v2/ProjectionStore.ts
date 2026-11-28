@@ -1483,7 +1483,7 @@ const decodeProviderThreadPayload = Schema.decodeUnknownEffect(
 const decodeProviderTurnPayload = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationV2ProviderTurnJsonSchema),
 );
-const decodeRuntimeRequestPayload = Schema.decodeUnknownEffect(
+export const decodeRuntimeRequestPayload = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationV2RuntimeRequestJsonSchema),
 );
 const decodeMessagePayload = Schema.decodeUnknownEffect(
@@ -1837,6 +1837,7 @@ function pendingRuntimeRequestSummary(
     kind: request.kind,
     createdAt: request.createdAt,
     blocking: request.responseCapability.type !== "message",
+    ...(request.sharedWithThreadIds?.length ? { userOnly: true } : {}),
   };
 }
 
