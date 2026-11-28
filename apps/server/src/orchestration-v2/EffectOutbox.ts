@@ -8,6 +8,7 @@ import {
   ModelSelection,
   NodeId,
   NonNegativeInt,
+  OrchestrationV2ProviderThread,
   ProviderSessionId,
   RunAttemptId,
   ProviderApprovalDecision,
@@ -47,6 +48,8 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     providerSessionId: ProviderSessionId,
     detail: Schema.optional(Schema.String),
     revokeMcpCredential: Schema.optional(Schema.Boolean),
+    handoffProviderThread: Schema.optional(Schema.toCodecJson(OrchestrationV2ProviderThread)),
+    handoffRunId: Schema.optional(RunId),
   }),
   Schema.Struct({
     type: Schema.Literal("provider-session.apply-model-selection"),

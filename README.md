@@ -1,10 +1,10 @@
 # forkT
 
-forkT is an independent fork of [T3 Code](https://github.com/pingdotgg/t3code) for working with coding agents across projects. You can start a conversation with the main coordinator, follow work with a project's coordinator, and answer a worker's question from the Inbox.
+forkT is an unofficial, independent fork of [T3 Code](https://github.com/pingdotgg/t3code) for working with coding agents across projects. You can start a conversation with the main coordinator, follow work with a project's coordinator, and answer a worker's question from the Inbox.
 
 ## Availability
 
-The forkT desktop build is currently distributed locally. The public default branch shares the T3 Code source history. For the original app, visit [T3 Code downloads](https://t3.codes/download).
+Download the signed Apple silicon Mac build from [forkT releases](https://github.com/sergical/forkT/releases/latest). The disk image contains forkT.app and can be installed alongside T3 Code. For the original app, visit [T3 Code downloads](https://t3.codes/download).
 
 ## Credits
 

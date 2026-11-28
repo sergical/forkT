@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import {
   MessageId,
@@ -443,7 +444,12 @@ it.effect("exports visible messages once on their own provider turn with consent
     assert.strictEqual(chats()[2]!.attributes.get("t3.provider_turn.status"), "interrupted");
     assert.isFalse(chats()[2]!.attributes.has("gen_ai.input.messages"));
   }).pipe(
-    Effect.provide(ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))),
+    Effect.provide(
+      ProjectionStore.layer.pipe(
+        Layer.provide(NodeCrypto.layerDigest),
+        Layer.provideMerge(SqlitePersistence.layerMemory),
+      ),
+    ),
   ),
 );
 
