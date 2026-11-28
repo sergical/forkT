@@ -74,23 +74,24 @@ type ThreadAncestor = Pick<
   "id" | "environmentId" | "lineage" | "delegatedFrom" | "archivedAt"
 >;
 
+export function resolveListedAncestorThreadRef(
+  ref: ScopedThreadRef,
+  threads: readonly ThreadAncestor[],
+): ScopedThreadRef {
+  return findListedAncestorThreadRef(ref, (target) =>
+    threads.find(
+      (thread) => thread.id === target.threadId && thread.environmentId === target.environmentId,
+    ),
+  );
+}
+
 // Subagents, side chats and tasks delegated from a listed parent have no list row,
 // so an open one is represented by its nearest listed ancestor. A broken chain
 // (missing or archived parent, cycle) resolves to the thread itself, which then matches no row.
-export function resolveListedAncestorThreadRef(
+export function findListedAncestorThreadRef(
   ref: ScopedThreadRef,
-  threads:
-    | readonly ThreadAncestor[]
-    | ((ref: ScopedThreadRef) => ThreadAncestor | null | undefined),
+  findThread: (target: ScopedThreadRef) => ThreadAncestor | null | undefined,
 ): ScopedThreadRef {
-  const findThread =
-    typeof threads === "function"
-      ? threads
-      : (target: ScopedThreadRef) =>
-          threads.find(
-            (thread) =>
-              thread.id === target.threadId && thread.environmentId === target.environmentId,
-          );
   const visited = new Set<string>();
   let current = ref;
   let thread = findThread(current);

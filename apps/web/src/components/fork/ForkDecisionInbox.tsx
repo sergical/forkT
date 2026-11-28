@@ -29,7 +29,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
-import { resolveListedAncestorThreadRef } from "@t3tools/client-runtime/state/threads";
+import { findListedAncestorThreadRef } from "@t3tools/client-runtime/state/threads";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { filesystemEnvironment } from "~/state/filesystem";
@@ -123,7 +123,7 @@ const conversationGroupsAtom = Atom.family((environmentId: EnvironmentId) =>
     >();
     const shell = (ref: ScopedThreadRef) => get(environmentThreadShells.quietThreadShellAtom(ref));
     for (const thread of get(inboxThreadsAtom(environmentId))) {
-      const ancestorRef = resolveListedAncestorThreadRef(
+      const ancestorRef = findListedAncestorThreadRef(
         scopeThreadRef(environmentId, thread.id),
         shell,
       );
